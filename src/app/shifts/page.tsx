@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -224,9 +224,39 @@ const SEED_ROSTERS_AGUSTUS: ShiftRosterRow[] = [
   }
 ];
 
+// Helper: Get nama bulan Indonesia dari Date
+const BULAN_INDONESIA = [
+  "JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI",
+  "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"
+];
+
+function getCurrentMonthYear(): string {
+  const now = new Date();
+  return `${BULAN_INDONESIA[now.getMonth()]} ${now.getFullYear()}`;
+}
+
+function generateMonthOptions(): SelectOption[] {
+  const now = new Date();
+  const options: SelectOption[] = [];
+  // Show 6 months back + current + 6 months forward = 13 months
+  for (let offset = -6; offset <= 6; offset++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const value = `${BULAN_INDONESIA[d.getMonth()]} ${d.getFullYear()}`;
+    const label = `${BULAN_INDONESIA[d.getMonth()].charAt(0)}${BULAN_INDONESIA[d.getMonth()].slice(1).toLowerCase()} ${d.getFullYear()}`;
+    options.push({
+      value,
+      label: offset === 0 ? `${label} (Bulan Ini)` : label,
+    });
+  }
+  return options;
+}
+
 export default function ShiftsPage() {
   const supabase = createClient();
-  const [selectedMonthYear, setSelectedMonthYear] = useState("AGUSTUS 2026");
+  const currentMonthYear = useMemo(() => getCurrentMonthYear(), []);
+  const monthOptions = useMemo(() => generateMonthOptions(), []);
+
+  const [selectedMonthYear, setSelectedMonthYear] = useState(currentMonthYear);
   const [selectedGroup, setSelectedGroup] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"ROSTER_MATRIX" | "DAILY_LIST" | "LEAVE_REQUESTS">("ROSTER_MATRIX");
@@ -236,7 +266,8 @@ export default function ShiftsPage() {
 
   // Import Modal State
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [importMonthYearInput, setImportMonthYearInput] = useState("AGUSTUS 2026");
+  const [importMonthYearInput, setImportMonthYearInput] = useState(currentMonthYear);
+  const [importGroupTab, setImportGroupTab] = useState<"NAMA TEKNISI" | "NAMA NOC" | "NAMA PESERTA PSG">("NAMA TEKNISI");
   const [importPasteText, setImportPasteText] = useState("");
   const [importing, setImporting] = useState(false);
 
@@ -246,7 +277,7 @@ export default function ShiftsPage() {
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [formGroupName, setFormGroupName] = useState<string>("NAMA TEKNISI");
   const [formEmployeeName, setFormEmployeeName] = useState("");
-  const [formMonthYear, setFormMonthYear] = useState("AGUSTUS 2026");
+  const [formMonthYear, setFormMonthYear] = useState(currentMonthYear);
   const [formDailyShifts, setFormDailyShifts] = useState<Record<string, string>>({});
   const [savingManual, setSavingManual] = useState(false);
 
@@ -300,7 +331,7 @@ export default function ShiftsPage() {
     setEditingRowId(null);
     setFormGroupName(defaultGroup);
     setFormEmployeeName("");
-    setFormMonthYear(selectedMonthYear);
+    setFormMonthYear(currentMonthYear);
 
     // Initial 31 days set to PAGI
     const initialShifts: Record<string, string> = {};
@@ -317,7 +348,7 @@ export default function ShiftsPage() {
     setEditingRowId(null);
     setFormGroupName("NAMA TEKNISI");
     setFormEmployeeName("");
-    setFormMonthYear(selectedMonthYear);
+    setFormMonthYear(currentMonthYear);
 
     // Initial 31 days set to LIBUR before selection
     const initialShifts: Record<string, string> = {};
@@ -457,7 +488,7 @@ export default function ShiftsPage() {
     }
   };
 
-  // Handle Import / Paste Data Google Spreadsheet
+  // Handle Import / Paste Data Google Spreadsheet (per-group)
   const handleImportSpreadsheet = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!importPasteText.trim()) {
@@ -469,21 +500,16 @@ export default function ShiftsPage() {
     try {
       const lines = importPasteText.trim().split("\n");
       const newParsedRows: ShiftRosterRow[] = [];
-      let currentGroup = "NAMA TEKNISI";
+      // Use the selected import group tab as the target group
+      const targetGroup = importGroupTab;
 
       lines.forEach((line) => {
         const columns = line.split("\t").map((c) => c.trim());
         if (columns.length === 0 || !columns[0]) return;
 
         const firstCol = columns[0].toUpperCase();
-        if (firstCol.includes("NAMA NOC")) {
-          currentGroup = "NAMA NOC";
-          return;
-        } else if (firstCol.includes("NAMA PESERTA") || firstCol.includes("PSG")) {
-          currentGroup = "NAMA PESERTA PSG";
-          return;
-        } else if (firstCol.includes("NAMA TEKNISI")) {
-          currentGroup = "NAMA TEKNISI";
+        // Skip group header lines
+        if (firstCol.includes("NAMA NOC") || firstCol.includes("NAMA PESERTA") || firstCol.includes("PSG") || firstCol.includes("NAMA TEKNISI") || firstCol.includes("GROUP")) {
           return;
         }
 
@@ -498,7 +524,7 @@ export default function ShiftsPage() {
           shiftStartIndex = 1;
         }
 
-        if (empName && !empName.toUpperCase().includes("SHIFT") && !empName.toUpperCase().includes("ISTIRAHAT")) {
+        if (empName && !empName.toUpperCase().includes("SHIFT") && !empName.toUpperCase().includes("ISTIRAHAT") && !empName.toUpperCase().includes("KARYAWAN")) {
           const daily_shifts: Record<string, string> = {};
           let dayNum = 1;
 
@@ -517,7 +543,7 @@ export default function ShiftsPage() {
           newParsedRows.push({
             id: crypto.randomUUID(),
             month_year: importMonthYearInput.toUpperCase(),
-            group_name: currentGroup,
+            group_name: targetGroup,
             employee_name: empName,
             daily_shifts,
           });
@@ -531,11 +557,19 @@ export default function ShiftsPage() {
           console.warn("Gagal simpan ke Supabase, menyimpan lokal:", err);
         }
 
-        setRosterRows(newParsedRows);
-        setSelectedMonthYear(importMonthYearInput.toUpperCase());
-        setIsImportModalOpen(false);
+        // Merge: replace matching group+month, keep other groups/months
+        const importMonth = importMonthYearInput.toUpperCase();
+        setRosterRows((prev) => {
+          const kept = prev.filter(
+            (r) => !(r.group_name === targetGroup && r.month_year === importMonth)
+          );
+          return [...kept, ...newParsedRows];
+        });
+        setSelectedMonthYear(importMonth);
+
+        const groupLabel = targetGroup === "NAMA TEKNISI" ? "Teknis" : targetGroup === "NAMA NOC" ? "NOC" : "PSG";
+        alert(`✅ Berhasil mengimpor ${newParsedRows.length} personel grup ${groupLabel} untuk ${importMonth}!`);
         setImportPasteText("");
-        alert(`Berhasil mengimpor ${newParsedRows.length} baris jadwal shift dari Google Spreadsheet!`);
       } else {
         alert("Format data tidak dikenali. Pastikan menyalin baris tabel langsung dari Google Spreadsheet.");
       }
@@ -575,14 +609,7 @@ export default function ShiftsPage() {
     }, 400);
   };
 
-  // Month & Group Filter options
-  const monthOptions: SelectOption[] = [
-    { value: "AGUSTUS 2026", label: "Agustus 2026" },
-    { value: "SEPTEMBER 2026", label: "September 2026" },
-    { value: "OKTOBER 2026", label: "Oktober 2026" },
-    { value: "NOVEMBER 2026", label: "November 2026" },
-    { value: "DESEMBER 2026", label: "Desember 2026" },
-  ];
+  // Month & Group Filter options (monthOptions generated dynamically at top)
 
   const groupFilterOptions: SelectOption[] = [
     { value: "ALL", label: "Semua Kelompok / Tim" },
@@ -663,7 +690,12 @@ export default function ShiftsPage() {
           {/* Tombol Import Spreadsheet */}
           <button
             type="button"
-            onClick={() => setIsImportModalOpen(true)}
+            onClick={() => {
+              setImportMonthYearInput(currentMonthYear);
+              setImportGroupTab("NAMA TEKNISI");
+              setImportPasteText("");
+              setIsImportModalOpen(true);
+            }}
             className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition-all active:scale-95"
           >
             <FileSpreadsheet className="h-4 w-4" />
@@ -712,7 +744,7 @@ export default function ShiftsPage() {
             value={selectedMonthYear}
             onChange={(val) => setSelectedMonthYear(val)}
             size="sm"
-            className="w-44"
+            className="w-56"
           />
         </div>
       </div>
@@ -1184,14 +1216,14 @@ export default function ShiftsPage() {
         </div>
       )}
 
-      {/* MODAL IMPORT / PASTE GOOGLE SPREADSHEET DATA */}
+      {/* MODAL IMPORT / PASTE GOOGLE SPREADSHEET DATA — 3 GROUP TABS */}
       {isImportModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 overflow-y-auto no-scrollbar">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto no-scrollbar">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto no-scrollbar">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
                 <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
-                Import / Paste Jadwal Google Spreadsheet
+                Import Jadwal per Kelompok
               </h3>
               <button
                 type="button"
@@ -1202,27 +1234,96 @@ export default function ShiftsPage() {
               </button>
             </div>
 
-            <form onSubmit={handleImportSpreadsheet} className="mt-4 space-y-3.5 text-xs">
+            <form onSubmit={handleImportSpreadsheet} className="mt-4 space-y-4 text-xs">
+
+              {/* Step 1: Pilih Bulan */}
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Bulan & Tahun Jadwal *
+                <label className="block font-bold text-slate-700 mb-1.5">
+                  1. Bulan & Tahun Jadwal *
                 </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Contoh: AGUSTUS 2026"
+                <CustomSelect
+                  options={monthOptions}
                   value={importMonthYearInput}
-                  onChange={(e) => setImportMonthYearInput(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold uppercase text-slate-800 text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                  onChange={(val) => setImportMonthYearInput(val)}
+                  size="sm"
+                  className="w-full sm:w-64"
                 />
               </div>
 
+              {/* Step 2: Pilih Kelompok */}
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Tempel (Paste) Salinan Baris dari Google Spreadsheet *
+                <label className="block font-bold text-slate-700 mb-1.5">
+                  2. Pilih Kelompok yang Diimpor *
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setImportGroupTab("NAMA TEKNISI"); setImportPasteText(""); }}
+                    className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-all ${
+                      importGroupTab === "NAMA TEKNISI"
+                        ? "bg-teal-700 text-white border-teal-800 shadow-sm ring-2 ring-teal-500/40"
+                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    <span className="font-extrabold text-xs uppercase flex items-center gap-1.5">
+                      <Briefcase className="h-4 w-4" /> TEKNIS
+                    </span>
+                    <span className={`text-[10px] ${importGroupTab === "NAMA TEKNISI" ? "text-teal-100" : "text-slate-500"}`}>
+                      Tim Lapangan & Splicer
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setImportGroupTab("NAMA NOC"); setImportPasteText(""); }}
+                    className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-all ${
+                      importGroupTab === "NAMA NOC"
+                        ? "bg-blue-700 text-white border-blue-800 shadow-sm ring-2 ring-blue-500/40"
+                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    <span className="font-extrabold text-xs uppercase flex items-center gap-1.5">
+                      <Users className="h-4 w-4" /> NOC
+                    </span>
+                    <span className={`text-[10px] ${importGroupTab === "NAMA NOC" ? "text-blue-100" : "text-slate-500"}`}>
+                      Network Operations Center
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setImportGroupTab("NAMA PESERTA PSG"); setImportPasteText(""); }}
+                    className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-all ${
+                      importGroupTab === "NAMA PESERTA PSG"
+                        ? "bg-amber-600 text-white border-amber-700 shadow-sm ring-2 ring-amber-500/40"
+                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    <span className="font-extrabold text-xs uppercase flex items-center gap-1.5">
+                      <ShieldCheck className="h-4 w-4" /> PSG
+                    </span>
+                    <span className={`text-[10px] ${importGroupTab === "NAMA PESERTA PSG" ? "text-amber-100" : "text-slate-500"}`}>
+                      Siswa Magang / PKL
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Step 3: Paste Area */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  3. Tempel (Paste) Data Grup{" "}
+                  <span className={`uppercase ${
+                    importGroupTab === "NAMA TEKNISI" ? "text-teal-700" :
+                    importGroupTab === "NAMA NOC" ? "text-blue-700" : "text-amber-700"
+                  }`}>
+                    {importGroupTab === "NAMA TEKNISI" ? "Teknis" : importGroupTab === "NAMA NOC" ? "NOC" : "PSG"}
+                  </span>{" "}
+                  dari Google Spreadsheet *
                 </label>
                 <p className="text-[11px] text-slate-500 mb-1">
-                  Buka Google Spreadsheet perusahaan, blok baris tabel jadwal dari kolom Nama hingga tanggal 31, tekan <kbd className="bg-slate-100 px-1 border rounded">Ctrl+C</kbd>, lalu paste (<kbd className="bg-slate-100 px-1 border rounded">Ctrl+V</kbd>) di kotak bawah:
+                  Blok <strong>hanya baris personel grup {importGroupTab === "NAMA TEKNISI" ? "Teknis" : importGroupTab === "NAMA NOC" ? "NOC" : "PSG"}</strong> di
+                  spreadsheet (No, Nama, lalu kolom shift tanggal 1-31), lalu <kbd className="bg-slate-100 px-1 border rounded">Ctrl+C</kbd> → <kbd className="bg-slate-100 px-1 border rounded">Ctrl+V</kbd> di bawah:
                 </p>
                 <textarea
                   rows={8}
@@ -1230,26 +1331,40 @@ export default function ShiftsPage() {
                   placeholder={`Contoh tempelan:\n1\tDAVID ARDIANSYAH\tSOC\tLIBUR\tLIBUR\tMALAM\tMALAM\n2\tPANDU PRADANA\tLIBUR\tLIBUR\tPAGI\tPAGI...`}
                   value={importPasteText}
                   onChange={(e) => setImportPasteText(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-slate-300 font-mono text-[11px] focus:ring-2 focus:ring-teal-500 focus:outline-none bg-slate-50"
+                  className={`w-full p-3 rounded-xl border font-mono text-[11px] focus:ring-2 focus:outline-none bg-slate-50 ${
+                    importGroupTab === "NAMA TEKNISI" ? "border-teal-300 focus:ring-teal-500" :
+                    importGroupTab === "NAMA NOC" ? "border-blue-300 focus:ring-blue-500" :
+                    "border-amber-300 focus:ring-amber-500"
+                  }`}
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsImportModalOpen(false)}
-                  className="px-3.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={importing}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl shadow-xs disabled:opacity-50 flex items-center gap-1.5"
-                >
-                  <Upload className="h-4 w-4" />
-                  <span>{importing ? "Memproses Data..." : "Proses & Simpan Jadwal"}</span>
-                </button>
+              {/* Actions */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                <p className="text-[11px] text-slate-400">
+                  Import akan menimpa data grup <strong>{importGroupTab === "NAMA TEKNISI" ? "Teknis" : importGroupTab === "NAMA NOC" ? "NOC" : "PSG"}</strong> bulan <strong>{importMonthYearInput}</strong>
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsImportModalOpen(false)}
+                    className="px-3.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={importing}
+                    className={`px-4 py-2 text-xs font-semibold text-white rounded-xl shadow-xs disabled:opacity-50 flex items-center gap-1.5 ${
+                      importGroupTab === "NAMA TEKNISI" ? "bg-teal-700 hover:bg-teal-800" :
+                      importGroupTab === "NAMA NOC" ? "bg-blue-700 hover:bg-blue-800" :
+                      "bg-amber-600 hover:bg-amber-700"
+                    }`}
+                  >
+                    <Upload className="h-4 w-4" />
+                    <span>{importing ? "Memproses..." : `Import Grup ${importGroupTab === "NAMA TEKNISI" ? "Teknis" : importGroupTab === "NAMA NOC" ? "NOC" : "PSG"}`}</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
