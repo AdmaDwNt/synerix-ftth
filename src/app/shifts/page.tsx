@@ -264,7 +264,11 @@ export default function ShiftsPage() {
   const [selectedMonthYear, setSelectedMonthYear] = useState(currentMonthYear);
   const [selectedGroup, setSelectedGroup] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<"ROSTER_MATRIX" | "DAILY_LIST" | "LEAVE_REQUESTS">("ROSTER_MATRIX");
+  const [activeTab, setActiveTab] = useState<"ROSTER_MATRIX" | "DAILY_LIST" | "LEAVE_REQUESTS">("DAILY_LIST");
+  const [selectedDay, setSelectedDay] = useState<number>(() => {
+    const today = new Date();
+    return today.getDate();
+  });
 
   const [rosterRows, setRosterRows] = useState<ShiftRosterRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -991,34 +995,55 @@ export default function ShiftsPage() {
       <div className="bg-white rounded-2xl border border-synerix-border p-4 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           
-          {/* Navigation Tabs */}
-          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+          {/* Navigation Tabs (Mobile-Friendly Segmented Bar) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab("DAILY_LIST")}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+                activeTab === "DAILY_LIST"
+                  ? "bg-teal-700 text-white shadow-xs"
+                  : "text-slate-600 hover:bg-slate-100 bg-slate-50 border border-slate-200"
+              }`}
+            >
+              <CalendarIcon className="h-3.5 w-3.5" />
+              <span>Jadwal Harian</span>
+              <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-extrabold ${
+                activeTab === "DAILY_LIST" ? "bg-teal-900/60 text-teal-100" : "bg-teal-100 text-teal-800"
+              }`}>
+                Tgl {selectedDay}
+              </span>
+            </button>
+
             <button
               type="button"
               onClick={() => setActiveTab("ROSTER_MATRIX")}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
                 activeTab === "ROSTER_MATRIX"
                   ? "bg-teal-700 text-white shadow-xs"
-                  : "text-slate-600 hover:bg-slate-100"
+                  : "text-slate-600 hover:bg-slate-100 bg-slate-50 border border-slate-200"
               }`}
             >
-              Matriks Spreadsheet Bulanan ({filteredRosters.length} Karyawan)
+              <Layers className="h-3.5 w-3.5" />
+              <span>Matriks 31 Hari ({filteredRosters.length})</span>
             </button>
+
             <button
               type="button"
               onClick={() => setActiveTab("LEAVE_REQUESTS")}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
                 activeTab === "LEAVE_REQUESTS"
                   ? "bg-teal-700 text-white shadow-xs"
-                  : "text-slate-600 hover:bg-slate-100"
+                  : "text-slate-600 hover:bg-slate-100 bg-slate-50 border border-slate-200"
               }`}
             >
-              Pengajuan Cuti / Izin ({leaves.length})
+              <Clock className="h-3.5 w-3.5" />
+              <span>Pengajuan Cuti ({leaves.length})</span>
             </button>
           </div>
 
-          {/* Controls: Search & Group Filter */}
-          {activeTab === "ROSTER_MATRIX" && (
+          {/* Controls: Search & Group Filter (Active on Matrix & Daily Views) */}
+          {(activeTab === "ROSTER_MATRIX" || activeTab === "DAILY_LIST") && (
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative w-full sm:w-48">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
@@ -1042,229 +1067,524 @@ export default function ShiftsPage() {
           )}
         </div>
 
-        {/* TAB 1: SPREADSHEET ROSTER MATRIX VIEW */}
+        {/* TAB 1: JADWAL HARIAN (MOBILE-OPTIMIZED VIEW) */}
+        {activeTab === "DAILY_LIST" && (
+          <div className="space-y-4">
+            
+            {/* Horizontal Date Ribbon Carousel */}
+            <div className="bg-slate-50/80 p-3 rounded-2xl border border-slate-200 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                  <CalendarIcon className="h-3.5 w-3.5 text-teal-700" />
+                  <span>Pilih Tanggal ({selectedMonthYear}):</span>
+                </span>
+                <span className="text-[11px] font-semibold text-teal-800 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200">
+                  Hari ini: {new Date().getDate()} {BULAN_INDONESIA[new Date().getMonth()]}
+                </span>
+              </div>
+
+              {/* Day Pills Ribbon */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+                {daysArray.map((d) => {
+                  const [mName, yStr] = selectedMonthYear.split(" ");
+                  const mIdx = BULAN_INDONESIA.indexOf((mName || "").toUpperCase());
+                  const yr = parseInt(yStr, 10) || new Date().getFullYear();
+                  const dateObj = new Date(yr, mIdx >= 0 ? mIdx : new Date().getMonth(), d);
+                  const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+                  const dayName = dayNames[dateObj.getDay()];
+                  const isSelected = selectedDay === d;
+                  const isToday =
+                    new Date().getFullYear() === yr &&
+                    new Date().getMonth() === mIdx &&
+                    new Date().getDate() === d;
+
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setSelectedDay(d)}
+                      className={`flex flex-col items-center justify-center min-w-[46px] py-1.5 px-1 rounded-xl border transition-all shrink-0 cursor-pointer active:scale-95 ${
+                        isSelected
+                          ? "bg-teal-700 text-white border-teal-800 shadow-sm ring-2 ring-teal-500/40"
+                          : isToday
+                          ? "bg-teal-50 text-teal-900 border-teal-300 font-bold"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                      }`}
+                    >
+                      <span className={`text-[10px] uppercase font-bold ${
+                        isSelected ? "text-teal-200" : isToday ? "text-teal-700" : "text-slate-400"
+                      }`}>
+                        {dayName}
+                      </span>
+                      <span className="text-sm font-extrabold leading-tight">
+                        {d}
+                      </span>
+                      {isToday && (
+                        <span className={`text-[8px] font-bold mt-0.5 ${
+                          isSelected ? "text-teal-100" : "text-teal-600"
+                        }`}>
+                          Hari Ini
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Quick Summary Chips for Selected Day */}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 text-xs">
+              <span className="text-slate-500 font-bold mr-1 shrink-0 text-[11px]">Rekap Shift Tgl {selectedDay}:</span>
+              {["PAGI", "SORE", "SOC", "MALAM", "LIBUR"].map((code) => {
+                const count = filteredRosters.filter(
+                  (r) => (r.daily_shifts[String(selectedDay)] || "LIBUR").toUpperCase() === code
+                ).length;
+                const style = getShiftBadgeStyle(code);
+                return (
+                  <div key={code} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] shrink-0 ${style}`}>
+                    <span>{code}:</span>
+                    <span className="font-extrabold">{count}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Group Sections (Clean Vertical Mobile Cards) */}
+            <div className="space-y-4">
+              
+              {/* GROUP 1: TEKNISI */}
+              {groupedRosters.TEKNISI.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-teal-900 text-white rounded-xl text-xs font-bold uppercase tracking-wider">
+                    <span>🔹 NAMA TEKNISI</span>
+                    <span className="text-[11px] text-teal-200 font-normal">
+                      {groupedRosters.TEKNISI.length} Personel
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    {groupedRosters.TEKNISI.map((emp) => {
+                      const shiftCode = emp.daily_shifts[String(selectedDay)] || "LIBUR";
+                      const badgeStyle = getShiftBadgeStyle(shiftCode);
+                      return (
+                        <div
+                          key={emp.id}
+                          className="p-3 rounded-xl border border-slate-200 bg-white hover:border-teal-300 transition-all shadow-xs flex items-center justify-between gap-3"
+                        >
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-xs text-slate-900 truncate">
+                              {emp.employee_name}
+                            </h4>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              Tim Lapangan
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              title="Klik untuk putar shift hari ini"
+                              onClick={() => handleQuickCycleShift(emp, selectedDay)}
+                              className={`px-3 py-1 rounded-lg text-xs font-extrabold uppercase shadow-2xs transition-all active:scale-95 cursor-pointer ${badgeStyle}`}
+                            >
+                              {shiftCode}
+                            </button>
+                            <button
+                              type="button"
+                              title="Edit Jadwal 31 Hari"
+                              onClick={() => handleEditRowDirect(emp)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-teal-700 hover:bg-teal-50 transition-colors"
+                            >
+                              <Edit3 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              title="Hapus Personel"
+                              onClick={() => handleDeleteRoster(emp)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* GROUP 2: NOC */}
+              {groupedRosters.NOC.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-blue-900 text-white rounded-xl text-xs font-bold uppercase tracking-wider">
+                    <span>🔹 NAMA NOC</span>
+                    <span className="text-[11px] text-blue-200 font-normal">
+                      {groupedRosters.NOC.length} Personel
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    {groupedRosters.NOC.map((emp) => {
+                      const shiftCode = emp.daily_shifts[String(selectedDay)] || "LIBUR";
+                      const badgeStyle = getShiftBadgeStyle(shiftCode);
+                      return (
+                        <div
+                          key={emp.id}
+                          className="p-3 rounded-xl border border-slate-200 bg-white hover:border-blue-300 transition-all shadow-xs flex items-center justify-between gap-3"
+                        >
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-xs text-slate-900 truncate">
+                              {emp.employee_name}
+                            </h4>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              Network Operations
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              title="Klik untuk putar shift hari ini"
+                              onClick={() => handleQuickCycleShift(emp, selectedDay)}
+                              className={`px-3 py-1 rounded-lg text-xs font-extrabold uppercase shadow-2xs transition-all active:scale-95 cursor-pointer ${badgeStyle}`}
+                            >
+                              {shiftCode}
+                            </button>
+                            <button
+                              type="button"
+                              title="Edit Jadwal 31 Hari"
+                              onClick={() => handleEditRowDirect(emp)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition-colors"
+                            >
+                              <Edit3 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              title="Hapus Personel"
+                              onClick={() => handleDeleteRoster(emp)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* GROUP 3: PSG / MAGANG */}
+              {groupedRosters.PSG.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-amber-800 text-white rounded-xl text-xs font-bold uppercase tracking-wider">
+                    <span>🔹 NAMA PESERTA PSG / MAGANG</span>
+                    <span className="text-[11px] text-amber-200 font-normal">
+                      {groupedRosters.PSG.length} Personel
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    {groupedRosters.PSG.map((emp) => {
+                      const shiftCode = emp.daily_shifts[String(selectedDay)] || "LIBUR";
+                      const badgeStyle = getShiftBadgeStyle(shiftCode);
+                      return (
+                        <div
+                          key={emp.id}
+                          className="p-3 rounded-xl border border-slate-200 bg-white hover:border-amber-300 transition-all shadow-xs flex items-center justify-between gap-3"
+                        >
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-xs text-slate-900 truncate">
+                              {emp.employee_name}
+                            </h4>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              Siswa Magang / PKL
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              title="Klik untuk putar shift hari ini"
+                              onClick={() => handleQuickCycleShift(emp, selectedDay)}
+                              className={`px-3 py-1 rounded-lg text-xs font-extrabold uppercase shadow-2xs transition-all active:scale-95 cursor-pointer ${badgeStyle}`}
+                            >
+                              {shiftCode}
+                            </button>
+                            <button
+                              type="button"
+                              title="Edit Jadwal 31 Hari"
+                              onClick={() => handleEditRowDirect(emp)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-amber-700 hover:bg-amber-50 transition-colors"
+                            >
+                              <Edit3 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              title="Hapus Personel"
+                              onClick={() => handleDeleteRoster(emp)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {filteredRosters.length === 0 && (
+                <div className="py-12 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-2xl">
+                  Belum ada data personel untuk bulan {selectedMonthYear}. Klik &ldquo;+ Input Baru&rdquo; atau &ldquo;Import Spreadsheet&rdquo; di atas untuk mengisi jadwal.
+                </div>
+              )}
+
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: SPREADSHEET ROSTER MATRIX VIEW (DIPERBAIKI UNTUK MOBILE) */}
         {activeTab === "ROSTER_MATRIX" && (
-          <div className="overflow-x-auto no-scrollbar border border-slate-200 rounded-xl relative">
-            <table className="w-full text-center text-xs border-collapse">
-              <thead>
-                {/* Header Month Title Banner */}
-                <tr className="bg-gradient-to-r from-slate-900 to-teal-900 text-white font-extrabold text-xs">
-                  <th className="sticky left-0 z-20 bg-slate-950 py-2.5 px-2 border-r border-slate-700 text-center min-w-[44px]">
-                    NO
-                  </th>
-                  <th className="sticky left-[44px] z-20 bg-slate-950 py-2.5 px-4 border-r border-slate-700 text-left min-w-[190px] shadow-[2px_0_5px_rgba(0,0,0,0.3)]">
-                    NAMA KARYAWAN / TEKNISI
-                  </th>
-                  <th colSpan={31} className="py-2.5 tracking-wider uppercase">
-                    {selectedMonthYear}
-                  </th>
-                  <th className="sticky right-0 z-20 bg-slate-950 py-2.5 px-3 border-l border-slate-700 text-center min-w-[85px] shadow-[-2px_0_5px_rgba(0,0,0,0.3)]">
-                    AKSI
-                  </th>
-                </tr>
+          <div className="space-y-2">
+            
+            {/* Mobile Scroll Hint */}
+            <div className="flex items-center justify-between text-[11px] text-slate-500 py-1.5 px-3 bg-slate-50 rounded-xl border border-slate-200">
+              <span className="flex items-center gap-1.5 font-semibold text-slate-700">
+                👉 <span>Geser tabel ke kanan untuk melihat tanggal 1 - 31 & kolom aksi</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveTab("DAILY_LIST")}
+                className="text-teal-700 hover:text-teal-800 font-bold underline cursor-pointer shrink-0 ml-2"
+              >
+                Gunakan Mode Harian (Mobile)
+              </button>
+            </div>
 
-                {/* Day Numbers 1 to 31 */}
-                <tr className="bg-slate-100 text-slate-800 font-bold text-[11px] border-b border-slate-300">
-                  <th className="sticky left-0 z-10 bg-slate-100 py-1.5 px-2 border-r border-slate-300 text-center font-bold">
-                    #
-                  </th>
-                  <th className="sticky left-[44px] z-10 bg-slate-100 py-1.5 px-4 border-r border-slate-300 text-left min-w-[190px] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
-                    GRUP & KARYAWAN
-                  </th>
-                  {daysArray.map((d) => (
-                    <th key={d} className="py-1.5 px-1 border-r border-slate-200 min-w-[34px]">
-                      {d}
+            <div className="overflow-x-auto no-scrollbar border border-slate-200 rounded-xl relative">
+              <table className="w-full text-center text-xs border-collapse">
+                <thead>
+                  {/* Header Month Title Banner */}
+                  <tr className="bg-gradient-to-r from-slate-900 to-teal-900 text-white font-extrabold text-xs">
+                    <th className="sticky left-0 z-20 bg-slate-950 py-2.5 px-1 text-center w-9 min-w-[36px] max-w-[36px] border-r border-slate-700">
+                      NO
                     </th>
-                  ))}
-                  <th className="sticky right-0 z-10 bg-slate-100 py-1.5 px-2 border-l border-slate-300 text-center min-w-[85px] shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
-                    OPERASI
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-slate-200 text-[11px] font-semibold">
-                
-                {/* GROUP 1: NAMA TEKNISI */}
-                {groupedRosters.TEKNISI.length > 0 && (
-                  <>
-                    <tr className="bg-teal-800 text-white font-extrabold text-xs text-left">
-                      <td colSpan={34} className="py-2 px-4 uppercase tracking-wider bg-teal-900">
-                        🔹 GROUP: NAMA TEKNISI ({groupedRosters.TEKNISI.length} PERSONEL)
-                      </td>
-                    </tr>
-                    {groupedRosters.TEKNISI.map((emp, idx) => (
-                      <tr key={emp.id} className="hover:bg-slate-50 transition-colors group">
-                        <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-2 px-2 border-r border-slate-200 font-mono text-slate-500 font-bold text-center">
-                          {idx + 1}
-                        </td>
-                        <td className="sticky left-[44px] z-10 bg-white group-hover:bg-slate-50 py-2 px-4 border-r border-slate-200 text-left font-bold text-slate-900 truncate min-w-[190px] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
-                          {emp.employee_name}
-                        </td>
-                        {daysArray.map((d) => {
-                          const shiftCode = emp.daily_shifts[String(d)] || "LIBUR";
-                          const badgeStyle = getShiftBadgeStyle(shiftCode);
-                          return (
-                            <td key={d} className="py-1 px-0.5 border-r border-slate-200">
-                              <button
-                                type="button"
-                                title={`Klik untuk ubah cepat shift tgl ${d} (${emp.employee_name}): ${shiftCode}`}
-                                onClick={() => handleQuickCycleShift(emp, d)}
-                                className={`inline-block w-full py-1 text-[10px] rounded uppercase cursor-pointer transition-all hover:scale-105 active:scale-95 ${badgeStyle}`}
-                              >
-                                {shiftCode}
-                              </button>
-                            </td>
-                          );
-                        })}
-                        <td className="sticky right-0 z-10 bg-white group-hover:bg-slate-50 py-1 px-1 border-l border-slate-200 text-center shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              type="button"
-                              title="Edit Jadwal Personel"
-                              onClick={() => handleEditRowDirect(emp)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 transition-colors"
-                            >
-                              <Edit3 className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              title="Hapus Personel dari Jadwal"
-                              onClick={() => handleDeleteRoster(emp)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </>
-                )}
-
-                {/* GROUP 2: NAMA NOC */}
-                {groupedRosters.NOC.length > 0 && (
-                  <>
-                    <tr className="bg-blue-800 text-white font-extrabold text-xs text-left">
-                      <td colSpan={34} className="py-2 px-4 uppercase tracking-wider bg-blue-900">
-                        🔹 GROUP: NAMA NOC ({groupedRosters.NOC.length} PERSONEL)
-                      </td>
-                    </tr>
-                    {groupedRosters.NOC.map((emp, idx) => (
-                      <tr key={emp.id} className="hover:bg-slate-50 transition-colors group">
-                        <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-2 px-2 border-r border-slate-200 font-mono text-slate-500 font-bold text-center">
-                          {idx + 1}
-                        </td>
-                        <td className="sticky left-[44px] z-10 bg-white group-hover:bg-slate-50 py-2 px-4 border-r border-slate-200 text-left font-bold text-slate-900 truncate min-w-[190px] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
-                          {emp.employee_name}
-                        </td>
-                        {daysArray.map((d) => {
-                          const shiftCode = emp.daily_shifts[String(d)] || "LIBUR";
-                          const badgeStyle = getShiftBadgeStyle(shiftCode);
-                          return (
-                            <td key={d} className="py-1 px-0.5 border-r border-slate-200">
-                              <button
-                                type="button"
-                                title={`Klik untuk ubah cepat shift tgl ${d} (${emp.employee_name}): ${shiftCode}`}
-                                onClick={() => handleQuickCycleShift(emp, d)}
-                                className={`inline-block w-full py-1 text-[10px] rounded uppercase cursor-pointer transition-all hover:scale-105 active:scale-95 ${badgeStyle}`}
-                              >
-                                {shiftCode}
-                              </button>
-                            </td>
-                          );
-                        })}
-                        <td className="sticky right-0 z-10 bg-white group-hover:bg-slate-50 py-1 px-1 border-l border-slate-200 text-center shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              type="button"
-                              title="Edit Jadwal Personel"
-                              onClick={() => handleEditRowDirect(emp)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 transition-colors"
-                            >
-                              <Edit3 className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              title="Hapus Personel dari Jadwal"
-                              onClick={() => handleDeleteRoster(emp)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </>
-                )}
-
-                {/* GROUP 3: NAMA PESERTA PSG */}
-                {groupedRosters.PSG.length > 0 && (
-                  <>
-                    <tr className="bg-amber-700 text-white font-extrabold text-xs text-left">
-                      <td colSpan={34} className="py-2 px-4 uppercase tracking-wider bg-amber-800">
-                        🔹 GROUP: NAMA PESERTA PSG / MAGANG ({groupedRosters.PSG.length} PERSONEL)
-                      </td>
-                    </tr>
-                    {groupedRosters.PSG.map((emp, idx) => (
-                      <tr key={emp.id} className="hover:bg-slate-50 transition-colors group">
-                        <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-2 px-2 border-r border-slate-200 font-mono text-slate-500 font-bold text-center">
-                          {idx + 1}
-                        </td>
-                        <td className="sticky left-[44px] z-10 bg-white group-hover:bg-slate-50 py-2 px-4 border-r border-slate-200 text-left font-bold text-slate-900 truncate min-w-[190px] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
-                          {emp.employee_name}
-                        </td>
-                        {daysArray.map((d) => {
-                          const shiftCode = emp.daily_shifts[String(d)] || "LIBUR";
-                          const badgeStyle = getShiftBadgeStyle(shiftCode);
-                          return (
-                            <td key={d} className="py-1 px-0.5 border-r border-slate-200">
-                              <button
-                                type="button"
-                                title={`Klik untuk ubah cepat shift tgl ${d} (${emp.employee_name}): ${shiftCode}`}
-                                onClick={() => handleQuickCycleShift(emp, d)}
-                                className={`inline-block w-full py-1 text-[10px] rounded uppercase cursor-pointer transition-all hover:scale-105 active:scale-95 ${badgeStyle}`}
-                              >
-                                {shiftCode}
-                              </button>
-                            </td>
-                          );
-                        })}
-                        <td className="sticky right-0 z-10 bg-white group-hover:bg-slate-50 py-1 px-1 border-l border-slate-200 text-center shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              type="button"
-                              title="Edit Jadwal Personel"
-                              onClick={() => handleEditRowDirect(emp)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 transition-colors"
-                            >
-                              <Edit3 className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              title="Hapus Personel dari Jadwal"
-                              onClick={() => handleDeleteRoster(emp)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </>
-                )}
-
-                {filteredRosters.length === 0 && (
-                  <tr>
-                    <td colSpan={34} className="py-12 text-center text-slate-400 text-xs">
-                      Belum ada data jadwal shift untuk bulan {selectedMonthYear}. Klik &ldquo;+ Input Baru&rdquo; atau &ldquo;Import Spreadsheet&rdquo; di atas untuk mengisi jadwal.
-                    </td>
+                    <th className="sticky left-[36px] z-20 bg-slate-950 py-2.5 px-2 sm:px-3 text-left w-32 min-w-[125px] max-w-[125px] sm:w-48 sm:min-w-[180px] sm:max-w-[180px] truncate border-r border-slate-700 shadow-[2px_0_4px_rgba(0,0,0,0.25)]">
+                      NAMA PERSONEL
+                    </th>
+                    <th colSpan={31} className="py-2.5 tracking-wider uppercase">
+                      {selectedMonthYear}
+                    </th>
+                    <th className="py-2.5 px-2 border-l border-slate-700 text-center min-w-[76px] w-[76px] bg-slate-950">
+                      AKSI
+                    </th>
                   </tr>
-                )}
 
-              </tbody>
-            </table>
+                  {/* Day Numbers 1 to 31 */}
+                  <tr className="bg-slate-100 text-slate-800 font-bold text-[11px] border-b border-slate-300">
+                    <th className="sticky left-0 z-10 bg-slate-100 py-1.5 px-1 border-r border-slate-300 text-center font-bold w-9 min-w-[36px] max-w-[36px]">
+                      #
+                    </th>
+                    <th className="sticky left-[36px] z-10 bg-slate-100 py-1.5 px-2 sm:px-3 border-r border-slate-300 text-left w-32 min-w-[125px] max-w-[125px] sm:w-48 sm:min-w-[180px] sm:max-w-[180px] truncate shadow-[2px_0_4px_rgba(0,0,0,0.06)]">
+                      GRUP & PERSONEL
+                    </th>
+                    {daysArray.map((d) => (
+                      <th key={d} className="py-1.5 px-1 border-r border-slate-200 min-w-[34px] w-[34px]">
+                        {d}
+                      </th>
+                    ))}
+                    <th className="py-1.5 px-2 border-l border-slate-300 text-center min-w-[76px] w-[76px] bg-slate-100">
+                      OPERASI
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-200 text-[11px] font-semibold">
+                  
+                  {/* GROUP 1: NAMA TEKNISI */}
+                  {groupedRosters.TEKNISI.length > 0 && (
+                    <>
+                      <tr className="bg-teal-800 text-white font-extrabold text-xs text-left">
+                        <td colSpan={34} className="py-2 px-4 uppercase tracking-wider bg-teal-900">
+                          🔹 GROUP: NAMA TEKNISI ({groupedRosters.TEKNISI.length} PERSONEL)
+                        </td>
+                      </tr>
+                      {groupedRosters.TEKNISI.map((emp, idx) => (
+                        <tr key={emp.id} className="hover:bg-slate-50 transition-colors group">
+                          <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-2 px-1 border-r border-slate-200 font-mono text-slate-500 font-bold text-center w-9 min-w-[36px] max-w-[36px] text-[10px]">
+                            {idx + 1}
+                          </td>
+                          <td className="sticky left-[36px] z-10 bg-white group-hover:bg-slate-50 py-2 px-2 sm:px-3 border-r border-slate-200 text-left font-bold text-slate-900 truncate w-32 min-w-[125px] max-w-[125px] sm:w-48 sm:min-w-[180px] sm:max-w-[180px] shadow-[2px_0_4px_rgba(0,0,0,0.06)]">
+                            {emp.employee_name}
+                          </td>
+                          {daysArray.map((d) => {
+                            const shiftCode = emp.daily_shifts[String(d)] || "LIBUR";
+                            const badgeStyle = getShiftBadgeStyle(shiftCode);
+                            return (
+                              <td key={d} className="py-1 px-0.5 border-r border-slate-200 min-w-[34px] w-[34px]">
+                                <button
+                                  type="button"
+                                  title={`Klik ubah shift tgl ${d} (${emp.employee_name}): ${shiftCode}`}
+                                  onClick={() => handleQuickCycleShift(emp, d)}
+                                  className={`inline-block w-full py-1 text-[10px] rounded uppercase cursor-pointer transition-all hover:scale-105 active:scale-95 ${badgeStyle}`}
+                                >
+                                  {shiftCode}
+                                </button>
+                              </td>
+                            );
+                          })}
+                          <td className="py-1 px-1 border-l border-slate-200 text-center min-w-[76px] w-[76px] bg-white group-hover:bg-slate-50">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                title="Edit Jadwal Personel"
+                                onClick={() => handleEditRowDirect(emp)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 transition-colors"
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                title="Hapus Personel dari Jadwal"
+                                onClick={() => handleDeleteRoster(emp)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </>
+                  )}
+
+                  {/* GROUP 2: NAMA NOC */}
+                  {groupedRosters.NOC.length > 0 && (
+                    <>
+                      <tr className="bg-blue-800 text-white font-extrabold text-xs text-left">
+                        <td colSpan={34} className="py-2 px-4 uppercase tracking-wider bg-blue-900">
+                          🔹 GROUP: NAMA NOC ({groupedRosters.NOC.length} PERSONEL)
+                        </td>
+                      </tr>
+                      {groupedRosters.NOC.map((emp, idx) => (
+                        <tr key={emp.id} className="hover:bg-slate-50 transition-colors group">
+                          <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-2 px-1 border-r border-slate-200 font-mono text-slate-500 font-bold text-center w-9 min-w-[36px] max-w-[36px] text-[10px]">
+                            {idx + 1}
+                          </td>
+                          <td className="sticky left-[36px] z-10 bg-white group-hover:bg-slate-50 py-2 px-2 sm:px-3 border-r border-slate-200 text-left font-bold text-slate-900 truncate w-32 min-w-[125px] max-w-[125px] sm:w-48 sm:min-w-[180px] sm:max-w-[180px] shadow-[2px_0_4px_rgba(0,0,0,0.06)]">
+                            {emp.employee_name}
+                          </td>
+                          {daysArray.map((d) => {
+                            const shiftCode = emp.daily_shifts[String(d)] || "LIBUR";
+                            const badgeStyle = getShiftBadgeStyle(shiftCode);
+                            return (
+                              <td key={d} className="py-1 px-0.5 border-r border-slate-200 min-w-[34px] w-[34px]">
+                                <button
+                                  type="button"
+                                  title={`Klik ubah shift tgl ${d} (${emp.employee_name}): ${shiftCode}`}
+                                  onClick={() => handleQuickCycleShift(emp, d)}
+                                  className={`inline-block w-full py-1 text-[10px] rounded uppercase cursor-pointer transition-all hover:scale-105 active:scale-95 ${badgeStyle}`}
+                                >
+                                  {shiftCode}
+                                </button>
+                              </td>
+                            );
+                          })}
+                          <td className="py-1 px-1 border-l border-slate-200 text-center min-w-[76px] w-[76px] bg-white group-hover:bg-slate-50">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                title="Edit Jadwal Personel"
+                                onClick={() => handleEditRowDirect(emp)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 transition-colors"
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                title="Hapus Personel dari Jadwal"
+                                onClick={() => handleDeleteRoster(emp)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </>
+                  )}
+
+                  {/* GROUP 3: NAMA PESERTA PSG */}
+                  {groupedRosters.PSG.length > 0 && (
+                    <>
+                      <tr className="bg-amber-700 text-white font-extrabold text-xs text-left">
+                        <td colSpan={34} className="py-2 px-4 uppercase tracking-wider bg-amber-800">
+                          🔹 GROUP: NAMA PESERTA PSG / MAGANG ({groupedRosters.PSG.length} PERSONEL)
+                        </td>
+                      </tr>
+                      {groupedRosters.PSG.map((emp, idx) => (
+                        <tr key={emp.id} className="hover:bg-slate-50 transition-colors group">
+                          <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-2 px-1 border-r border-slate-200 font-mono text-slate-500 font-bold text-center w-9 min-w-[36px] max-w-[36px] text-[10px]">
+                            {idx + 1}
+                          </td>
+                          <td className="sticky left-[36px] z-10 bg-white group-hover:bg-slate-50 py-2 px-2 sm:px-3 border-r border-slate-200 text-left font-bold text-slate-900 truncate w-32 min-w-[125px] max-w-[125px] sm:w-48 sm:min-w-[180px] sm:max-w-[180px] shadow-[2px_0_4px_rgba(0,0,0,0.06)]">
+                            {emp.employee_name}
+                          </td>
+                          {daysArray.map((d) => {
+                            const shiftCode = emp.daily_shifts[String(d)] || "LIBUR";
+                            const badgeStyle = getShiftBadgeStyle(shiftCode);
+                            return (
+                              <td key={d} className="py-1 px-0.5 border-r border-slate-200 min-w-[34px] w-[34px]">
+                                <button
+                                  type="button"
+                                  title={`Klik ubah shift tgl ${d} (${emp.employee_name}): ${shiftCode}`}
+                                  onClick={() => handleQuickCycleShift(emp, d)}
+                                  className={`inline-block w-full py-1 text-[10px] rounded uppercase cursor-pointer transition-all hover:scale-105 active:scale-95 ${badgeStyle}`}
+                                >
+                                  {shiftCode}
+                                </button>
+                              </td>
+                            );
+                          })}
+                          <td className="py-1 px-1 border-l border-slate-200 text-center min-w-[76px] w-[76px] bg-white group-hover:bg-slate-50">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                title="Edit Jadwal Personel"
+                                onClick={() => handleEditRowDirect(emp)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 transition-colors"
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                title="Hapus Personel dari Jadwal"
+                                onClick={() => handleDeleteRoster(emp)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </>
+                  )}
+
+                  {filteredRosters.length === 0 && (
+                    <tr>
+                      <td colSpan={34} className="py-12 text-center text-slate-400 text-xs">
+                        Belum ada data jadwal shift untuk bulan {selectedMonthYear}. Klik &ldquo;+ Input Baru&rdquo; atau &ldquo;Import Spreadsheet&rdquo; di atas untuk mengisi jadwal.
+                      </td>
+                    </tr>
+                  )}
+
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
