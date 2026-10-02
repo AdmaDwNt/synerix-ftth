@@ -24,7 +24,10 @@ import {
   UserPlus,
   RotateCcw,
   Sparkles,
-  Check
+  Check,
+  Database,
+  CheckCircle,
+  XCircle
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import CustomSelect, { SelectOption } from "@/components/ui/CustomSelect";
@@ -40,6 +43,8 @@ interface ShiftRosterRow {
 interface LeaveRequest {
   id: string;
   requestType: "CUTI_TAHUNAN" | "TUKAR_SHIFT" | "IZIN_SAKIT";
+  employeeName: string;
+  groupName?: string;
   startDate: string;
   endDate: string;
   reason: string;
@@ -263,6 +268,8 @@ export default function ShiftsPage() {
 
   const [rosterRows, setRosterRows] = useState<ShiftRosterRow[]>(SEED_ROSTERS_AGUSTUS);
   const [loading, setLoading] = useState(false);
+  const [dbStatus, setDbStatus] = useState<"CONNECTED" | "ERROR" | "LOADING">("LOADING");
+  const [dbErrorMsg, setDbErrorMsg] = useState<string | null>(null);
 
   // Import Modal State
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -285,6 +292,8 @@ export default function ShiftsPage() {
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [submittingLeave, setSubmittingLeave] = useState(false);
+  const [leaveEmployeeName, setLeaveEmployeeName] = useState("");
+  const [leaveGroupName, setLeaveGroupName] = useState<string>("NAMA TEKNISI");
   const [leaveType, setLeaveType] = useState<LeaveRequest["requestType"]>("CUTI_TAHUNAN");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -293,24 +302,39 @@ export default function ShiftsPage() {
   // Fetch data Roster dari Supabase
   const fetchRosters = async () => {
     setLoading(true);
+    setDbErrorMsg(null);
     try {
       const { data, error } = await supabase
         .from("shift_rosters")
         .select("*")
         .eq("month_year", selectedMonthYear);
 
-      if (data && data.length > 0) {
-        setRosterRows(data as ShiftRosterRow[]);
-      } else {
-        // Fallback seed data jika belum ada di database untuk bulan ini
+      if (error) {
+        console.warn("Supabase fetch error:", error);
+        setDbStatus("ERROR");
+        setDbErrorMsg(error.message || "Tabel shift_rosters belum dibuat");
         if (selectedMonthYear === "AGUSTUS 2026") {
           setRosterRows(SEED_ROSTERS_AGUSTUS);
         } else {
           setRosterRows([]);
         }
+      } else {
+        setDbStatus("CONNECTED");
+        if (data && data.length > 0) {
+          setRosterRows(data as ShiftRosterRow[]);
+        } else {
+          // Fallback seed data jika belum ada di database untuk bulan ini
+          if (selectedMonthYear === "AGUSTUS 2026") {
+            setRosterRows(SEED_ROSTERS_AGUSTUS);
+          } else {
+            setRosterRows([]);
+          }
+        }
       }
-    } catch (e) {
-      console.warn("Using initial seed rosters:", e);
+    } catch (e: any) {
+      console.warn("Using initial seed rosters (database not reachable):", e);
+      setDbStatus("ERROR");
+      setDbErrorMsg(e?.message || "Koneksi database gagal");
       if (selectedMonthYear === "AGUSTUS 2026") {
         setRosterRows(SEED_ROSTERS_AGUSTUS);
       } else {
@@ -321,8 +345,37 @@ export default function ShiftsPage() {
     }
   };
 
+  // Fetch data Pengajuan Cuti dari Supabase
+  const fetchLeaves = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("shift_leave_requests")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        setLeaves(
+          data.map((d: any) => ({
+            id: d.id,
+            requestType: d.request_type,
+            employeeName: d.employee_name || "Personel",
+            groupName: d.group_name || "NAMA TEKNISI",
+            startDate: d.start_date,
+            endDate: d.end_date,
+            reason: d.reason,
+            status: d.status,
+            createdAt: d.created_at ? d.created_at.split("T")[0] : "",
+          }))
+        );
+      }
+    } catch (err) {
+      console.warn("Could not fetch leaves from Supabase:", err);
+    }
+  };
+
   useEffect(() => {
     fetchRosters();
+    fetchLeaves();
   }, [selectedMonthYear]);
 
   // Open Modal Manual Create
@@ -342,7 +395,7 @@ export default function ShiftsPage() {
     setIsManualModalOpen(true);
   };
 
-  // Open Modal Manual Edit
+  // Open Modal Manual Edit (Toolbar)
   const handleOpenEditModal = () => {
     setModalMode("EDIT");
     setEditingRowId(null);
@@ -357,6 +410,54 @@ export default function ShiftsPage() {
     }
     setFormDailyShifts(initialShifts);
     setIsManualModalOpen(true);
+  };
+
+  // Direct Edit from Row in Matrix Table
+  const handleEditRowDirect = (row: ShiftRosterRow) => {
+    setModalMode("EDIT");
+    setEditingRowId(row.id);
+    setFormGroupName(row.group_name);
+    setFormEmployeeName(row.employee_name);
+    setFormMonthYear(row.month_year);
+
+    const filledShifts: Record<string, string> = {};
+    for (let i = 1; i <= 31; i++) {
+      filledShifts[String(i)] = row.daily_shifts[String(i)] || "LIBUR";
+    }
+    setFormDailyShifts(filledShifts);
+    setIsManualModalOpen(true);
+  };
+
+  // Delete Row from Database & State
+  const handleDeleteRoster = async (row: ShiftRosterRow) => {
+    const confirmDelete = window.confirm(
+      `Yakin ingin menghapus personel "${row.employee_name}" (${row.group_name}) dari jadwal ${row.month_year}?`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      const { error } = await supabase
+        .from("shift_rosters")
+        .delete()
+        .eq("id", row.id);
+
+      if (error) {
+        console.warn("Gagal hapus by id di Supabase, mencoba by match:", error);
+        await supabase
+          .from("shift_rosters")
+          .delete()
+          .match({
+            month_year: row.month_year,
+            group_name: row.group_name,
+            employee_name: row.employee_name,
+          });
+      }
+
+      setRosterRows((prev) => prev.filter((r) => r.id !== row.id));
+      alert(`✅ Berhasil menghapus jadwal ${row.employee_name}.`);
+    } catch (err: any) {
+      alert("Gagal menghapus jadwal: " + err.message);
+    }
   };
 
   // Handle Employee Selection in Edit Mode
@@ -399,7 +500,7 @@ export default function ShiftsPage() {
     }
   }, [formGroupName, formMonthYear, modalMode, isManualModalOpen]);
 
-  // Save / Update Manual Entry
+  // Save / Update Manual Entry (CRUD: Create & Update)
   const handleSaveManualRoster = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formEmployeeName.trim()) {
@@ -429,19 +530,33 @@ export default function ShiftsPage() {
         daily_shifts: formDailyShifts,
       };
 
-      // Try saving to Supabase
-      try {
-        await supabase.from("shift_rosters").upsert(payload);
-      } catch (err) {
-        console.warn("Could not sync to Supabase, saving locally:", err);
+      // Upsert to Supabase
+      const { error } = await supabase.from("shift_rosters").upsert(payload, {
+        onConflict: "month_year,group_name,employee_name"
+      });
+
+      if (error) {
+        console.error("Gagal sinkron ke Supabase:", error);
+        alert(`Peringatan: Gagal menyimpan ke database Supabase (${error.message}). Jadwal tersimpan di sesi lokal.`);
+      } else {
+        setDbStatus("CONNECTED");
       }
 
       if (editingRowId || existingRow) {
-        setRosterRows((prev) => prev.map((item) => (item.id === targetId ? payload : item)));
-        alert(`Berhasil memperbarui jadwal shift untuk ${payload.employee_name}`);
+        setRosterRows((prev) =>
+          prev.map((item) =>
+            item.id === targetId ||
+            (item.month_year === formattedMonth &&
+              item.employee_name === formattedName &&
+              item.group_name === formGroupName)
+              ? payload
+              : item
+          )
+        );
+        alert(`✅ Berhasil memperbarui jadwal shift untuk ${payload.employee_name}`);
       } else {
         setRosterRows((prev) => [payload, ...prev]);
-        alert(`Berhasil menambahkan personel & jadwal baru untuk ${payload.employee_name}`);
+        alert(`✅ Berhasil menambahkan personel & jadwal baru untuk ${payload.employee_name}`);
       }
 
       setIsManualModalOpen(false);
@@ -474,6 +589,36 @@ export default function ShiftsPage() {
     });
   };
 
+  // Quick Cycle Shift directly on Table Cell with auto-sync
+  const handleQuickCycleShift = async (row: ShiftRosterRow, day: number) => {
+    const currentShift = row.daily_shifts[String(day)] || "LIBUR";
+    const currentIndex = SHIFT_OPTIONS.indexOf(currentShift);
+    const nextIndex = (currentIndex + 1) % SHIFT_OPTIONS.length;
+    const nextShift = SHIFT_OPTIONS[nextIndex];
+
+    const updatedDailyShifts = {
+      ...row.daily_shifts,
+      [String(day)]: nextShift,
+    };
+
+    const updatedRow: ShiftRosterRow = {
+      ...row,
+      daily_shifts: updatedDailyShifts,
+    };
+
+    // Optimistic UI update
+    setRosterRows((prev) => prev.map((r) => (r.id === row.id ? updatedRow : r)));
+
+    // Auto-sync to Supabase in background
+    try {
+      await supabase.from("shift_rosters").upsert(updatedRow, {
+        onConflict: "month_year,group_name,employee_name",
+      });
+    } catch (e) {
+      console.warn("Quick cycle sync error:", e);
+    }
+  };
+
   const handleCellKeyDown = (e: React.KeyboardEvent, dayIndex: number) => {
     if (e.key === "ArrowRight" || e.key === " " || e.key === "ArrowDown") {
       e.preventDefault();
@@ -483,7 +628,6 @@ export default function ShiftsPage() {
       cycleShift(dayIndex, -1);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      // Mock event for form submission
       handleSaveManualRoster({ preventDefault: () => {} } as React.FormEvent);
     }
   };
@@ -500,7 +644,6 @@ export default function ShiftsPage() {
     try {
       const lines = importPasteText.trim().split("\n");
       const newParsedRows: ShiftRosterRow[] = [];
-      // Use the selected import group tab as the target group
       const targetGroup = importGroupTab;
 
       lines.forEach((line) => {
@@ -508,7 +651,6 @@ export default function ShiftsPage() {
         if (columns.length === 0 || !columns[0]) return;
 
         const firstCol = columns[0].toUpperCase();
-        // Skip group header lines
         if (firstCol.includes("NAMA NOC") || firstCol.includes("NAMA PESERTA") || firstCol.includes("PSG") || firstCol.includes("NAMA TEKNISI") || firstCol.includes("GROUP")) {
           return;
         }
@@ -552,7 +694,15 @@ export default function ShiftsPage() {
 
       if (newParsedRows.length > 0) {
         try {
-          await supabase.from("shift_rosters").insert(newParsedRows);
+          const { error } = await supabase.from("shift_rosters").upsert(newParsedRows, {
+            onConflict: "month_year,group_name,employee_name"
+          });
+          if (error) {
+            console.error("Gagal simpan import ke Supabase:", error);
+            alert(`Peringatan: Gagal menyimpan data impor ke database Supabase (${error.message}). Data ditampilkan di sesi lokal.`);
+          } else {
+            setDbStatus("CONNECTED");
+          }
         } catch (err) {
           console.warn("Gagal simpan ke Supabase, menyimpan lokal:", err);
         }
@@ -570,6 +720,7 @@ export default function ShiftsPage() {
         const groupLabel = targetGroup === "NAMA TEKNISI" ? "Teknis" : targetGroup === "NAMA NOC" ? "NOC" : "PSG";
         alert(`✅ Berhasil mengimpor ${newParsedRows.length} personel grup ${groupLabel} untuk ${importMonth}!`);
         setImportPasteText("");
+        setIsImportModalOpen(false);
       } else {
         alert("Format data tidak dikenali. Pastikan menyalin baris tabel langsung dari Google Spreadsheet.");
       }
@@ -580,33 +731,78 @@ export default function ShiftsPage() {
     }
   };
 
-  // Submit Cuti Form
-  const handleSubmitLeave = (e: React.FormEvent) => {
+  // Submit Cuti Form (CRUD Create Leave)
+  const handleSubmitLeave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!startDate || !endDate || !reason.trim()) {
-      alert("Tanggal dan alasan pengajuan wajib diisi.");
+    if (!startDate || !endDate || !reason.trim() || !leaveEmployeeName.trim()) {
+      alert("Nama personel, periode tanggal, dan alasan pengajuan wajib diisi.");
       return;
     }
 
     setSubmittingLeave(true);
-    setTimeout(() => {
-      const newLeave: LeaveRequest = {
+    try {
+      const newLeavePayload = {
         id: crypto.randomUUID(),
-        requestType: leaveType,
-        startDate,
-        endDate,
+        request_type: leaveType,
+        employee_name: leaveEmployeeName.trim().toUpperCase(),
+        group_name: leaveGroupName,
+        start_date: startDate,
+        end_date: endDate,
         reason: reason.trim(),
-        status: "PENDING",
-        createdAt: new Date().toISOString().split("T")[0],
+        status: "PENDING" as const,
       };
 
-      setLeaves([newLeave, ...leaves]);
+      try {
+        const { error } = await supabase
+          .from("shift_leave_requests")
+          .insert(newLeavePayload);
+        if (error) console.warn("Supabase leave insert error:", error);
+      } catch (err) {
+        console.warn("Could not save leave to Supabase:", err);
+      }
+
+      await fetchLeaves();
       setIsLeaveModalOpen(false);
+      setLeaveEmployeeName("");
       setStartDate("");
       setEndDate("");
       setReason("");
+      alert("✅ Pengajuan cuti / izin berhasil dikirim!");
+    } catch (err: any) {
+      alert("Gagal mengajukan cuti: " + err.message);
+    } finally {
       setSubmittingLeave(false);
-    }, 400);
+    }
+  };
+
+  // Update Leave Status (CRUD Update Leave)
+  const handleUpdateLeaveStatus = async (id: string, newStatus: "APPROVED" | "REJECTED") => {
+    try {
+      const { error } = await supabase
+        .from("shift_leave_requests")
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq("id", id);
+
+      if (error) {
+        console.warn("Failed to update leave in Supabase:", error);
+      }
+      setLeaves((prev) =>
+        prev.map((l) => (l.id === id ? { ...l, status: newStatus } : l))
+      );
+    } catch (e: any) {
+      alert("Gagal update status cuti: " + e.message);
+    }
+  };
+
+  // Delete Leave Ticket (CRUD Delete Leave)
+  const handleDeleteLeave = async (id: string) => {
+    if (!window.confirm("Hapus tiket pengajuan cuti ini?")) return;
+    try {
+      await supabase.from("shift_leave_requests").delete().eq("id", id);
+      setLeaves((prev) => prev.filter((l) => l.id !== id));
+    } catch (e: any) {
+      alert("Gagal menghapus tiket cuti: " + e.message);
+    }
   };
 
   // Month & Group Filter options (monthOptions generated dynamically at top)
@@ -651,11 +847,29 @@ export default function ShiftsPage() {
       {/* Top Header Banner */}
       <div className="p-5 sm:p-6 rounded-2xl bg-white border border-synerix-border shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-teal-50 text-teal-700 border border-teal-200 uppercase">
               Operational Management
             </span>
             <span className="text-xs text-synerix-subtext">| Roster Spreadsheet Integration</span>
+            {dbStatus === "CONNECTED" && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Database Cloud Aktif</span>
+              </span>
+            )}
+            {dbStatus === "ERROR" && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                <AlertCircle className="h-3 w-3 text-amber-600" />
+                <span>Mode Offline / Seed (DB Belum Siap)</span>
+              </span>
+            )}
+            {dbStatus === "LOADING" && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                <RefreshCw className="h-3 w-3 animate-spin" />
+                <span>Memeriksa DB...</span>
+              </span>
+            )}
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-synerix-text tracking-tight flex items-center gap-2">
             <CalendarIcon className="h-6 w-6 text-teal-700 shrink-0" />
@@ -736,7 +950,7 @@ export default function ShiftsPage() {
           </span>
         </div>
 
-        {/* Right: Quick Month Selection */}
+        {/* Right: Quick Month Selection & DB Refresh */}
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-xs font-semibold text-slate-600">Bulan Jadwal:</span>
           <CustomSelect
@@ -746,8 +960,45 @@ export default function ShiftsPage() {
             size="sm"
             className="w-56"
           />
+          <button
+            type="button"
+            onClick={fetchRosters}
+            disabled={loading}
+            title="Sinkronkan Ulang dengan Database Supabase"
+            className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-teal-700 transition-all active:scale-95 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin text-teal-700" : ""}`} />
+          </button>
         </div>
       </div>
+
+      {/* Warning Banner jika tabel Supabase belum ada di database */}
+      {dbStatus === "ERROR" && (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs shadow-xs animate-in fade-in">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-amber-900 text-sm">
+                Tabel Database Supabase Belum Tersedia ({dbErrorMsg || "PGRST205"})
+              </p>
+              <p className="text-amber-800 mt-1 leading-relaxed">
+                Skema SQL lengkap sudah disiapkan di file <code className="bg-amber-100/80 px-1.5 py-0.5 rounded font-mono font-bold text-amber-900">supabase/schema_shifts_roster.sql</code>. Silakan buka <strong>Supabase Dashboard &gt; SQL Editor</strong> lalu jalankan file tersebut agar perubahan CRUD (Tambah, Edit, Import, Hapus Jadwal) tersimpan permanen di database cloud.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+            <button
+              type="button"
+              onClick={fetchRosters}
+              disabled={loading}
+              className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+              <span>Coba Hubungkan Ulang</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Table Controls & Filters */}
       <div className="bg-white rounded-2xl border border-synerix-border p-4 shadow-sm space-y-4">
@@ -806,29 +1057,41 @@ export default function ShiftsPage() {
 
         {/* TAB 1: SPREADSHEET ROSTER MATRIX VIEW */}
         {activeTab === "ROSTER_MATRIX" && (
-          <div className="overflow-x-auto no-scrollbar border border-slate-200 rounded-xl">
+          <div className="overflow-x-auto no-scrollbar border border-slate-200 rounded-xl relative">
             <table className="w-full text-center text-xs border-collapse">
               <thead>
                 {/* Header Month Title Banner */}
                 <tr className="bg-gradient-to-r from-slate-900 to-teal-900 text-white font-extrabold text-xs">
-                  <th className="py-2.5 px-2 border-r border-slate-700 text-left min-w-[40px]">NO</th>
-                  <th className="py-2.5 px-4 border-r border-slate-700 text-left min-w-[180px]">
+                  <th className="sticky left-0 z-20 bg-slate-950 py-2.5 px-2 border-r border-slate-700 text-center min-w-[44px]">
+                    NO
+                  </th>
+                  <th className="sticky left-[44px] z-20 bg-slate-950 py-2.5 px-4 border-r border-slate-700 text-left min-w-[190px] shadow-[2px_0_5px_rgba(0,0,0,0.3)]">
                     NAMA KARYAWAN / TEKNISI
                   </th>
                   <th colSpan={31} className="py-2.5 tracking-wider uppercase">
                     {selectedMonthYear}
                   </th>
+                  <th className="sticky right-0 z-20 bg-slate-950 py-2.5 px-3 border-l border-slate-700 text-center min-w-[85px] shadow-[-2px_0_5px_rgba(0,0,0,0.3)]">
+                    AKSI
+                  </th>
                 </tr>
 
                 {/* Day Numbers 1 to 31 */}
                 <tr className="bg-slate-100 text-slate-800 font-bold text-[11px] border-b border-slate-300">
-                  <th className="py-1.5 px-2 border-r border-slate-300">#</th>
-                  <th className="py-1.5 px-4 border-r border-slate-300 text-left">GRUP & KARYAWAN</th>
+                  <th className="sticky left-0 z-10 bg-slate-100 py-1.5 px-2 border-r border-slate-300 text-center font-bold">
+                    #
+                  </th>
+                  <th className="sticky left-[44px] z-10 bg-slate-100 py-1.5 px-4 border-r border-slate-300 text-left min-w-[190px] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
+                    GRUP & KARYAWAN
+                  </th>
                   {daysArray.map((d) => (
                     <th key={d} className="py-1.5 px-1 border-r border-slate-200 min-w-[34px]">
                       {d}
                     </th>
                   ))}
+                  <th className="sticky right-0 z-10 bg-slate-100 py-1.5 px-2 border-l border-slate-300 text-center min-w-[85px] shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
+                    OPERASI
+                  </th>
                 </tr>
               </thead>
 
@@ -838,16 +1101,16 @@ export default function ShiftsPage() {
                 {groupedRosters.TEKNISI.length > 0 && (
                   <>
                     <tr className="bg-teal-800 text-white font-extrabold text-xs text-left">
-                      <td colSpan={33} className="py-2 px-4 uppercase tracking-wider bg-teal-900">
+                      <td colSpan={34} className="py-2 px-4 uppercase tracking-wider bg-teal-900">
                         🔹 GROUP: NAMA TEKNISI ({groupedRosters.TEKNISI.length} PERSONEL)
                       </td>
                     </tr>
                     {groupedRosters.TEKNISI.map((emp, idx) => (
-                      <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="py-2 px-2 border-r border-slate-200 font-mono text-slate-500 font-bold">
+                      <tr key={emp.id} className="hover:bg-slate-50 transition-colors group">
+                        <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-2 px-2 border-r border-slate-200 font-mono text-slate-500 font-bold text-center">
                           {idx + 1}
                         </td>
-                        <td className="py-2 px-4 border-r border-slate-200 text-left font-bold text-slate-900 truncate">
+                        <td className="sticky left-[44px] z-10 bg-white group-hover:bg-slate-50 py-2 px-4 border-r border-slate-200 text-left font-bold text-slate-900 truncate min-w-[190px] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
                           {emp.employee_name}
                         </td>
                         {daysArray.map((d) => {
@@ -855,12 +1118,37 @@ export default function ShiftsPage() {
                           const badgeStyle = getShiftBadgeStyle(shiftCode);
                           return (
                             <td key={d} className="py-1 px-0.5 border-r border-slate-200">
-                              <span className={`inline-block w-full py-1 text-[10px] rounded uppercase ${badgeStyle}`}>
+                              <button
+                                type="button"
+                                title={`Klik untuk ubah cepat shift tgl ${d} (${emp.employee_name}): ${shiftCode}`}
+                                onClick={() => handleQuickCycleShift(emp, d)}
+                                className={`inline-block w-full py-1 text-[10px] rounded uppercase cursor-pointer transition-all hover:scale-105 active:scale-95 ${badgeStyle}`}
+                              >
                                 {shiftCode}
-                              </span>
+                              </button>
                             </td>
                           );
                         })}
+                        <td className="sticky right-0 z-10 bg-white group-hover:bg-slate-50 py-1 px-1 border-l border-slate-200 text-center shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              title="Edit Jadwal Personel"
+                              onClick={() => handleEditRowDirect(emp)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 transition-colors"
+                            >
+                              <Edit3 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              title="Hapus Personel dari Jadwal"
+                              onClick={() => handleDeleteRoster(emp)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </>
@@ -870,16 +1158,16 @@ export default function ShiftsPage() {
                 {groupedRosters.NOC.length > 0 && (
                   <>
                     <tr className="bg-blue-800 text-white font-extrabold text-xs text-left">
-                      <td colSpan={33} className="py-2 px-4 uppercase tracking-wider bg-blue-900">
+                      <td colSpan={34} className="py-2 px-4 uppercase tracking-wider bg-blue-900">
                         🔹 GROUP: NAMA NOC ({groupedRosters.NOC.length} PERSONEL)
                       </td>
                     </tr>
                     {groupedRosters.NOC.map((emp, idx) => (
-                      <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="py-2 px-2 border-r border-slate-200 font-mono text-slate-500 font-bold">
+                      <tr key={emp.id} className="hover:bg-slate-50 transition-colors group">
+                        <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-2 px-2 border-r border-slate-200 font-mono text-slate-500 font-bold text-center">
                           {idx + 1}
                         </td>
-                        <td className="py-2 px-4 border-r border-slate-200 text-left font-bold text-slate-900 truncate">
+                        <td className="sticky left-[44px] z-10 bg-white group-hover:bg-slate-50 py-2 px-4 border-r border-slate-200 text-left font-bold text-slate-900 truncate min-w-[190px] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
                           {emp.employee_name}
                         </td>
                         {daysArray.map((d) => {
@@ -887,12 +1175,37 @@ export default function ShiftsPage() {
                           const badgeStyle = getShiftBadgeStyle(shiftCode);
                           return (
                             <td key={d} className="py-1 px-0.5 border-r border-slate-200">
-                              <span className={`inline-block w-full py-1 text-[10px] rounded uppercase ${badgeStyle}`}>
+                              <button
+                                type="button"
+                                title={`Klik untuk ubah cepat shift tgl ${d} (${emp.employee_name}): ${shiftCode}`}
+                                onClick={() => handleQuickCycleShift(emp, d)}
+                                className={`inline-block w-full py-1 text-[10px] rounded uppercase cursor-pointer transition-all hover:scale-105 active:scale-95 ${badgeStyle}`}
+                              >
                                 {shiftCode}
-                              </span>
+                              </button>
                             </td>
                           );
                         })}
+                        <td className="sticky right-0 z-10 bg-white group-hover:bg-slate-50 py-1 px-1 border-l border-slate-200 text-center shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              title="Edit Jadwal Personel"
+                              onClick={() => handleEditRowDirect(emp)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 transition-colors"
+                            >
+                              <Edit3 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              title="Hapus Personel dari Jadwal"
+                              onClick={() => handleDeleteRoster(emp)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </>
@@ -902,16 +1215,16 @@ export default function ShiftsPage() {
                 {groupedRosters.PSG.length > 0 && (
                   <>
                     <tr className="bg-amber-700 text-white font-extrabold text-xs text-left">
-                      <td colSpan={33} className="py-2 px-4 uppercase tracking-wider bg-amber-800">
+                      <td colSpan={34} className="py-2 px-4 uppercase tracking-wider bg-amber-800">
                         🔹 GROUP: NAMA PESERTA PSG / MAGANG ({groupedRosters.PSG.length} PERSONEL)
                       </td>
                     </tr>
                     {groupedRosters.PSG.map((emp, idx) => (
-                      <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="py-2 px-2 border-r border-slate-200 font-mono text-slate-500 font-bold">
+                      <tr key={emp.id} className="hover:bg-slate-50 transition-colors group">
+                        <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-2 px-2 border-r border-slate-200 font-mono text-slate-500 font-bold text-center">
                           {idx + 1}
                         </td>
-                        <td className="py-2 px-4 border-r border-slate-200 text-left font-bold text-slate-900 truncate">
+                        <td className="sticky left-[44px] z-10 bg-white group-hover:bg-slate-50 py-2 px-4 border-r border-slate-200 text-left font-bold text-slate-900 truncate min-w-[190px] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
                           {emp.employee_name}
                         </td>
                         {daysArray.map((d) => {
@@ -919,12 +1232,37 @@ export default function ShiftsPage() {
                           const badgeStyle = getShiftBadgeStyle(shiftCode);
                           return (
                             <td key={d} className="py-1 px-0.5 border-r border-slate-200">
-                              <span className={`inline-block w-full py-1 text-[10px] rounded uppercase ${badgeStyle}`}>
+                              <button
+                                type="button"
+                                title={`Klik untuk ubah cepat shift tgl ${d} (${emp.employee_name}): ${shiftCode}`}
+                                onClick={() => handleQuickCycleShift(emp, d)}
+                                className={`inline-block w-full py-1 text-[10px] rounded uppercase cursor-pointer transition-all hover:scale-105 active:scale-95 ${badgeStyle}`}
+                              >
                                 {shiftCode}
-                              </span>
+                              </button>
                             </td>
                           );
                         })}
+                        <td className="sticky right-0 z-10 bg-white group-hover:bg-slate-50 py-1 px-1 border-l border-slate-200 text-center shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              title="Edit Jadwal Personel"
+                              onClick={() => handleEditRowDirect(emp)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 transition-colors"
+                            >
+                              <Edit3 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              title="Hapus Personel dari Jadwal"
+                              onClick={() => handleDeleteRoster(emp)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </>
@@ -932,8 +1270,8 @@ export default function ShiftsPage() {
 
                 {filteredRosters.length === 0 && (
                   <tr>
-                    <td colSpan={33} className="py-12 text-center text-slate-400 text-xs">
-                      Belum ada data jadwal shift untuk bulan {selectedMonthYear}. Klik &ldquo;+ Input / Edit Manual&rdquo; atau &ldquo;Import Spreadsheet&rdquo; di atas untuk mengisi jadwal.
+                    <td colSpan={34} className="py-12 text-center text-slate-400 text-xs">
+                      Belum ada data jadwal shift untuk bulan {selectedMonthYear}. Klik &ldquo;+ Input Baru&rdquo; atau &ldquo;Import Spreadsheet&rdquo; di atas untuk mengisi jadwal.
                     </td>
                   </tr>
                 )}
@@ -946,38 +1284,100 @@ export default function ShiftsPage() {
         {/* TAB 2: PENGAJUAN CUTI & IZIN */}
         {activeTab === "LEAVE_REQUESTS" && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900">Daftar Tiket Pengajuan Cuti & Izin</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Daftar Tiket Pengajuan Cuti, Izin & Tukar Shift</h3>
+                <p className="text-xs text-slate-500">Tersinkronisasi otomatis dengan database Supabase.</p>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsLeaveModalOpen(true)}
-                className="px-3 py-1.5 rounded-lg bg-teal-700 text-white text-xs font-semibold"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold shadow-xs transition-all active:scale-95 shrink-0 self-start sm:self-auto"
               >
-                + Pengajuan Cuti Baru
+                <Plus className="h-3.5 w-3.5" />
+                <span>+ Pengajuan Cuti Baru</span>
               </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {leaves.map((leave) => (
-                <div key={leave.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800 uppercase text-[10px] px-2 py-0.5 rounded bg-white border border-slate-200">
-                      {leave.requestType.replace("_", " ")}
-                    </span>
-                    <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                <div key={leave.id} className="p-4 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-all shadow-xs space-y-3 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold text-slate-800 uppercase text-[10px] px-2 py-0.5 rounded bg-slate-100 border border-slate-200">
+                        {leave.requestType.replace("_", " ")}
+                      </span>
+                      {leave.groupName && (
+                        <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+                          {leave.groupName}
+                        </span>
+                      )}
+                    </div>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        leave.status === "APPROVED"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : leave.status === "REJECTED"
+                          ? "bg-red-50 text-red-700 border-red-200"
+                          : "bg-amber-50 text-amber-700 border-amber-200"
+                      }`}
+                    >
                       {leave.status}
                     </span>
                   </div>
-                  <div className="font-bold text-slate-900">
-                    Periode: {leave.startDate} s/d {leave.endDate}
+
+                  <div>
+                    <h4 className="font-extrabold text-sm text-slate-900">{leave.employeeName}</h4>
+                    <p className="text-slate-600 text-xs font-semibold mt-0.5">
+                      📅 Periode: <span className="text-slate-900">{leave.startDate}</span> s/d <span className="text-slate-900">{leave.endDate}</span>
+                    </p>
                   </div>
-                  <p className="text-slate-600 italic">&ldquo;{leave.reason}&rdquo;</p>
+
+                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 text-slate-700 italic text-[11px]">
+                    &ldquo;{leave.reason}&rdquo;
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                    <span className="text-[10px] text-slate-400">
+                      Diajukan: {leave.createdAt || "Baru saja"}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {leave.status === "PENDING" && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateLeaveStatus(leave.id, "APPROVED")}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition-all active:scale-95"
+                          >
+                            <Check className="h-3 w-3" />
+                            <span>Setujui</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateLeaveStatus(leave.id, "REJECTED")}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] transition-all active:scale-95"
+                          >
+                            <X className="h-3 w-3" />
+                            <span>Tolak</span>
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        title="Hapus Tiket"
+                        onClick={() => handleDeleteLeave(leave.id)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors ml-1"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ))}
 
               {leaves.length === 0 && (
-                <div className="col-span-full py-8 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl">
-                  Belum ada riwayat pengajuan cuti.
+                <div className="col-span-full py-12 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl">
+                  Belum ada riwayat pengajuan cuti. Klik tombol &ldquo;+ Pengajuan Cuti Baru&rdquo; untuk mengajukan.
                 </div>
               )}
             </div>
@@ -1392,18 +1792,49 @@ export default function ShiftsPage() {
             <form onSubmit={handleSubmitLeave} className="mt-4 space-y-3.5 text-xs">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Jenis Pengajuan *
+                  Nama Personel / Karyawan *
                 </label>
-                <CustomSelect
-                  options={[
-                    { value: "CUTI_TAHUNAN", label: "Cuti Tahunan (Potong Kuota)" },
-                    { value: "TUKAR_SHIFT", label: "Tukar Shift Operasional" },
-                    { value: "IZIN_SAKIT", label: "Izin Sakit / Darurat" },
-                  ]}
-                  value={leaveType}
-                  onChange={(val) => setLeaveType(val as LeaveRequest["requestType"])}
-                  size="sm"
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: DAVID ARDIANSYAH"
+                  value={leaveEmployeeName}
+                  onChange={(e) => setLeaveEmployeeName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold uppercase text-slate-800 text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Kelompok / Tim *
+                  </label>
+                  <CustomSelect
+                    options={[
+                      { value: "NAMA TEKNISI", label: "NAMA TEKNISI" },
+                      { value: "NAMA NOC", label: "NAMA NOC" },
+                      { value: "NAMA PESERTA PSG", label: "NAMA PESERTA PSG" },
+                    ]}
+                    value={leaveGroupName}
+                    onChange={(val) => setLeaveGroupName(val)}
+                    size="sm"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Jenis Pengajuan *
+                  </label>
+                  <CustomSelect
+                    options={[
+                      { value: "CUTI_TAHUNAN", label: "Cuti Tahunan (Potong Kuota)" },
+                      { value: "TUKAR_SHIFT", label: "Tukar Shift Operasional" },
+                      { value: "IZIN_SAKIT", label: "Izin Sakit / Darurat" },
+                    ]}
+                    value={leaveType}
+                    onChange={(val) => setLeaveType(val as LeaveRequest["requestType"])}
+                    size="sm"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
