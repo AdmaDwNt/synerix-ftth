@@ -266,7 +266,7 @@ export default function ShiftsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"ROSTER_MATRIX" | "DAILY_LIST" | "LEAVE_REQUESTS">("ROSTER_MATRIX");
 
-  const [rosterRows, setRosterRows] = useState<ShiftRosterRow[]>(SEED_ROSTERS_AGUSTUS);
+  const [rosterRows, setRosterRows] = useState<ShiftRosterRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [dbStatus, setDbStatus] = useState<"CONNECTED" | "ERROR" | "LOADING">("LOADING");
   const [dbErrorMsg, setDbErrorMsg] = useState<string | null>(null);
@@ -313,33 +313,20 @@ export default function ShiftsPage() {
         console.warn("Supabase fetch error:", error);
         setDbStatus("ERROR");
         setDbErrorMsg(error.message || "Tabel shift_rosters belum dibuat");
-        if (selectedMonthYear === "AGUSTUS 2026") {
-          setRosterRows(SEED_ROSTERS_AGUSTUS);
-        } else {
-          setRosterRows([]);
-        }
+        setRosterRows([]);
       } else {
         setDbStatus("CONNECTED");
         if (data && data.length > 0) {
           setRosterRows(data as ShiftRosterRow[]);
         } else {
-          // Fallback seed data jika belum ada di database untuk bulan ini
-          if (selectedMonthYear === "AGUSTUS 2026") {
-            setRosterRows(SEED_ROSTERS_AGUSTUS);
-          } else {
-            setRosterRows([]);
-          }
+          setRosterRows([]);
         }
       }
     } catch (e: any) {
-      console.warn("Using initial seed rosters (database not reachable):", e);
+      console.warn("Koneksi database gagal:", e);
       setDbStatus("ERROR");
       setDbErrorMsg(e?.message || "Koneksi database gagal");
-      if (selectedMonthYear === "AGUSTUS 2026") {
-        setRosterRows(SEED_ROSTERS_AGUSTUS);
-      } else {
-        setRosterRows([]);
-      }
+      setRosterRows([]);
     } finally {
       setLoading(false);
     }
