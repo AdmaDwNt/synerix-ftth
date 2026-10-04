@@ -7,7 +7,11 @@ import {
     Pencil,
     Trash2,
     RefreshCw,
-    ExternalLink
+    ExternalLink,
+    Receipt,
+    Zap,
+    AlertTriangle,
+    Ticket
 } from "lucide-react";
 
 interface DismantleTableProps {
@@ -116,7 +120,24 @@ export default function DismantleTable({
                                         <span className="font-mono font-bold text-slate-800 tracking-tight text-xs truncate">
                                             {task.customer_id}
                                         </span>
+                                        {task.auto_ingested && (
+                                            <span
+                                                className="px-1 py-0.2 rounded text-[8px] font-black uppercase bg-cyan-50 text-cyan-800 border border-cyan-200 shrink-0"
+                                                title="Auto-Ingest via Bookmarklet HP"
+                                            >
+                                                ⚡
+                                            </span>
+                                        )}
                                     </div>
+                                    {task.ticket_id && (
+                                        <div
+                                            className="text-[10px] text-amber-900 font-mono font-bold truncate pl-3 flex items-center gap-0.5"
+                                            title={`Tiket: ${task.ticket_id}`}
+                                        >
+                                            <Ticket className="w-2.5 h-2.5 text-amber-700 shrink-0" />
+                                            <span>{task.ticket_id}</span>
+                                        </div>
+                                    )}
                                     {task.parent_odp_name && (
                                         <div
                                             className="text-[10px] text-slate-500 font-mono truncate pl-3"
@@ -149,10 +170,10 @@ export default function DismantleTable({
                                 {/* 6. JUDUL */}
                                 <td className="py-2.5 px-1.5 overflow-hidden">
                                     <div
-                                        className="font-bold text-slate-800 truncate"
+                                        className="font-bold text-slate-800 truncate flex items-center gap-1.5"
                                         title={`PENARIKAN PERANGKAT ${task.device_type ? `(${task.device_type})` : ""}`}
                                     >
-                                        PENARIKAN PERANGKAT {task.device_type ? `(${task.device_type})` : ""}
+                                        <span className="truncate">PENARIKAN {task.device_type ? `(${task.device_type})` : ""}</span>
                                     </div>
                                     <div
                                         className="text-teal-700 font-medium text-[11px] truncate"
@@ -161,6 +182,14 @@ export default function DismantleTable({
                                         {task.customer_name} —{" "}
                                         <span className="text-slate-500">{task.address}</span>
                                     </div>
+                                    {task.unpaid_amount !== undefined && Number(task.unpaid_amount) > 0 && (
+                                        <div className="mt-1 flex items-center gap-1">
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200">
+                                                <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
+                                                Tunggakan: Rp {Number(task.unpaid_amount).toLocaleString("id-ID")}
+                                            </span>
+                                        </div>
+                                    )}
                                 </td>
 
                                 {/* 7. PJ TERAKHIR */}
@@ -227,6 +256,19 @@ export default function DismantleTable({
                                                 title="Buka Navigasi Google Maps"
                                             >
                                                 <ExternalLink className="h-3.5 w-3.5" />
+                                            </a>
+                                        )}
+
+                                        {/* Billingnesia Link */}
+                                        {task.billing_url && (
+                                            <a
+                                                href={task.billing_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="p-1 rounded text-slate-500 hover:text-indigo-700 hover:bg-indigo-50 transition-colors shrink-0"
+                                                title="Buka Halaman Tiket Billingnesia"
+                                            >
+                                                <Receipt className="h-3.5 w-3.5 text-indigo-600" />
                                             </a>
                                         )}
 

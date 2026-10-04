@@ -14,6 +14,7 @@ import DismantleStatusModal from "@/components/dismantles/DismantleStatusModal";
 import AddDismantleModal from "@/components/dismantles/AddDismantleModal";
 import EditDismantleModal from "@/components/dismantles/EditDismantleModal";
 import ImportDismantleModal from "@/components/dismantles/ImportDismantleModal";
+import InstallBookmarkletModal from "@/components/dismantles/InstallBookmarkletModal";
 import HandoverSummaryTable from "@/components/dismantles/HandoverSummaryTable";
 import CustomSelect, { SelectOption } from "@/components/ui/CustomSelect";
 import {
@@ -22,6 +23,8 @@ import {
     MapPin,
     PackageCheck,
     Plus,
+    Smartphone,
+    Zap,
     RefreshCw,
     Compass,
     AlertCircle,
@@ -82,6 +85,7 @@ export default function DismantlesPage() {
     const [activeTaskForEdit, setActiveTaskForEdit] = useState<DismantleTask | null>(null);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [isBookmarkletModalOpen, setIsBookmarkletModalOpen] = useState(false);
 
     // Pagination state (Pilihan 10, 25, 50, 100 sesuai permintaan pengguna)
     const [currentPage, setCurrentPage] = useState(1);
@@ -414,8 +418,18 @@ export default function DismantlesPage() {
                                     </div>
                                 </div>
 
-                                {/* Header Right: + Tambah Data & Import */}
-                                <div className="flex items-center gap-2">
+                                {/* Header Right: + Tambah Data, Import, & Bookmarklet HP */}
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsBookmarkletModalOpen(true)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-teal-200/90 bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold text-xs shadow-2xs active:scale-95 transition-all"
+                                        title="Pasang Bookmarklet Ingest HP untuk impor 1-tap langsung dari Billingnesia"
+                                    >
+                                        <Smartphone className="h-4 w-4 text-teal-700" />
+                                        <span>📱 Ingest HP (1-Tap)</span>
+                                    </button>
+
                                     <button
                                         type="button"
                                         onClick={() => setIsAddModalOpen(true)}
@@ -684,6 +698,12 @@ export default function DismantlesPage() {
                 isOpen={isImportModalOpen}
                 onClose={() => setIsImportModalOpen(false)}
                 onSuccess={handleImportSuccess}
+            />
+
+            {/* Modal Panduan Pasang Bookmarklet HP */}
+            <InstallBookmarkletModal
+                isOpen={isBookmarkletModalOpen}
+                onClose={() => setIsBookmarkletModalOpen(false)}
             />
 
             {/* Modal Transisi Status Dismantle */}

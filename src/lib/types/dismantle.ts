@@ -21,6 +21,10 @@ export interface DismantleTask {
     technician_name?: string | null;
     completed_at?: string | null;
     handover_status?: boolean;
+    ticket_id?: string | null;
+    unpaid_amount?: number;
+    billing_url?: string | null;
+    auto_ingested?: boolean;
     created_at?: string;
     updated_at?: string;
     // Client-side computed properties
