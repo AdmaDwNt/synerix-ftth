@@ -42,14 +42,27 @@ export interface BillingnesiaScraperResult {
 }
 
 // In-memory session cookie cache di server runtime
+// CATATAN: Di Vercel Serverless, cache ini hanya bertahan selama satu warm invocation.
 let cachedCookie: string | null = null;
 let lastLoginTime: number = 0;
-const SESSION_CACHE_TTL_MS = 60 * 60 * 1000; // 1 jam TTL
+const SESSION_CACHE_TTL_MS = 10 * 60 * 1000; // 10 menit TTL (lebih pendek untuk serverless)
 
-const httpsAgent = new https.Agent({
-    rejectUnauthorized: false, // Menangani intermediate CA chain yang tidak dibundle pada server target
-    keepAlive: true,
-});
+// Pastikan SSL self-signed / CA chain billing.at-in.net bisa di-accept di serverless
+if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
+
+/**
+ * Membuat HTTPS Agent baru untuk setiap request batch.
+ * Di Vercel Serverless, keepAlive: false mencegah stale socket reuse antar invokasi.
+ */
+function createAgent(): https.Agent {
+    return new https.Agent({
+        rejectUnauthorized: false,
+        keepAlive: false,
+        timeout: 9000,
+    });
+}
 
 interface HttpResponse {
     statusCode: number;
@@ -93,8 +106,8 @@ function requestUrl(
             path: parsed.pathname + parsed.search,
             method,
             headers: requestHeaders,
-            agent: isHttps ? httpsAgent : undefined,
-            timeout: 15000,
+            agent: isHttps ? createAgent() : undefined,
+            timeout: 9000, // 9 detik — di bawah batas Vercel Hobby (10s)
         };
 
         const req = client.request(reqOptions, (res) => {
@@ -152,7 +165,7 @@ function requestUrl(
         req.on("error", (err) => reject(err));
         req.on("timeout", () => {
             req.destroy();
-            reject(new Error("Koneksi ke Billingnesia mengalami timeout (15 detik)."));
+            reject(new Error("Koneksi ke Billingnesia mengalami timeout. Coba lagi dalam beberapa saat."));
         });
 
         if (body) {

@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { scrapeBillingnesiaData } from "@/lib/scraper/billingnesiaScraper";
 
+// Konfigurasi Vercel Serverless Function
+// maxDuration: Maksimal waktu eksekusi (detik). Hobby plan = 10s, Pro = 60s.
+export const maxDuration = 10;
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
@@ -15,6 +20,19 @@ export async function POST(req: NextRequest) {
                     error: "Parameter pencarian (Nomor Tiket, ID Pelanggan, Nama, atau Daerah) wajib disertakan.",
                 },
                 { status: 400 }
+            );
+        }
+
+        // Verifikasi kredensial tersedia di environment
+        const username = process.env.BILLINGNESIA_USERNAME;
+        const password = process.env.BILLINGNESIA_PASSWORD;
+        if (!username || !password || username === "akun_username_anda") {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "Kredensial Billingnesia belum dikonfigurasi di server. Hubungi admin untuk mengatur Environment Variables.",
+                },
+                { status: 503 }
             );
         }
 
@@ -55,10 +73,23 @@ export async function POST(req: NextRequest) {
         );
     } catch (error: unknown) {
         console.error("API /api/scraper/billingnesia error:", error);
+
+        // Berikan pesan error yang lebih informatif
+        let errorMessage = "Terjadi kesalahan internal pada server scraper.";
+        if (error instanceof Error) {
+            if (error.message.includes("timeout")) {
+                errorMessage = "Koneksi ke Billingnesia timeout. Server billing mungkin sedang lambat, coba lagi.";
+            } else if (error.message.includes("ECONNREFUSED") || error.message.includes("ENOTFOUND")) {
+                errorMessage = "Tidak dapat terhubung ke server Billingnesia. Pastikan server billing sedang aktif.";
+            } else {
+                errorMessage = error.message;
+            }
+        }
+
         return NextResponse.json(
             {
                 success: false,
-                error: error instanceof Error ? error.message : "Terjadi kesalahan internal pada server scraper.",
+                error: errorMessage,
             },
             { status: 500 }
         );
