@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { DismantleTask } from "@/lib/types/dismantle";
 import { createClient } from "@/lib/supabase/client";
+import BillingnesiaAutofillBanner from "@/components/ui/BillingnesiaAutofillBanner";
+import { BillingnesiaScrapedData } from "@/lib/scraper/billingnesiaScraper";
 import {
     Plus,
     X,
@@ -12,7 +14,8 @@ import {
     Cpu,
     Home,
     Layers,
-    Compass
+    Compass,
+    Receipt
 } from "lucide-react";
 
 interface AddDismantleModalProps {
@@ -37,8 +40,33 @@ export default function AddDismantleModal({
     const [deviceType, setDeviceType] = useState("ZTE F609");
     const [latitude, setLatitude] = useState<number>(-7.8231);
     const [longitude, setLongitude] = useState<number>(111.9174);
+    const [ticketId, setTicketId] = useState<string>("");
+    const [unpaidAmount, setUnpaidAmount] = useState<number>(0);
+    const [billingUrl, setBillingUrl] = useState<string>("");
     const [gettingLocation, setGettingLocation] = useState(false);
     const [saving, setSaving] = useState(false);
+
+    // Handler data autofill dari On-Demand Scraper Billingnesia
+    const handleAutofillData = (data: BillingnesiaScrapedData) => {
+        if (data.customer_id) setCustomerId(data.customer_id);
+        if (data.customer_name) setCustomerName(data.customer_name);
+        if (data.phone_number) setPhoneNumber(data.phone_number);
+        if (data.address) setAddress(data.address);
+        if (data.device_type) setDeviceType(data.device_type);
+        if (data.latitude) setLatitude(data.latitude);
+        if (data.longitude) setLongitude(data.longitude);
+        if (data.ticket_id) setTicketId(data.ticket_id);
+        if (data.unpaid_amount) setUnpaidAmount(data.unpaid_amount);
+        if (data.billing_url) setBillingUrl(data.billing_url);
+
+        // Auto deteksi nama cluster dari alamat jika memungkinkan
+        const addrLower = (data.address || "").toLowerCase();
+        if (addrLower.includes("pesantren")) setClusterName("Pesantren");
+        else if (addrLower.includes("mojoroto")) setClusterName("Mojoroto");
+        else if (addrLower.includes("kota")) setClusterName("Kota");
+        else if (addrLower.includes("semen")) setClusterName("Semen");
+        else if (addrLower.includes("gurah")) setClusterName("Gurah");
+    };
 
     if (!isOpen) return null;
 
@@ -89,6 +117,9 @@ export default function AddDismantleModal({
                 device_type: deviceType.trim() || "ONT ZTE F609",
                 latitude,
                 longitude,
+                ticket_id: ticketId.trim() || null,
+                unpaid_amount: unpaidAmount || 0,
+                billing_url: billingUrl || null,
                 status: "QUEUE",
                 accessories: ["ADAPTOR", "PATCHCORD"],
                 handover_status: false,
@@ -113,6 +144,9 @@ export default function AddDismantleModal({
             setAddress("");
             setClusterName("Mojoroto");
             setParentOdpName("");
+            setTicketId("");
+            setUnpaidAmount(0);
+            setBillingUrl("");
         } catch (err: unknown) {
             alert("Terjadi kesalahan: " + (err instanceof Error ? err.message : String(err)));
         } finally {
@@ -141,13 +175,35 @@ export default function AddDismantleModal({
                     <button
                         type="button"
                         onClick={onClose}
-                        className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+                        className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
                     >
                         <X className="h-5 w-5" />
                     </button>
                 </div>
 
                 <form onSubmit={handleSubmit} className="mt-4 space-y-3.5">
+                    {/* Banner Tarik Data Otomatis dari Billingnesia */}
+                    <BillingnesiaAutofillBanner
+                        onDataFetched={handleAutofillData}
+                        placeholder="Contoh: TKT202610014768 atau 0101010602040"
+                    />
+
+                    {/* Badge Info Tiket & Tunggakan (Jika ada dari Billingnesia) */}
+                    {(ticketId || unpaidAmount > 0) && (
+                        <div className="flex items-center justify-between p-2.5 bg-amber-50/80 border border-amber-200 rounded-xl text-xs">
+                            <div className="flex items-center gap-2">
+                                <span className="font-bold text-amber-800">
+                                    {ticketId ? `Tiket: ${ticketId}` : "Terhubung ke Billingnesia"}
+                                </span>
+                            </div>
+                            {unpaidAmount > 0 && (
+                                <span className="font-semibold text-rose-700 bg-rose-100/70 px-2 py-0.5 rounded-md text-[11px]">
+                                    Tunggakan: Rp {unpaidAmount.toLocaleString("id-ID")}
+                                </span>
+                            )}
+                        </div>
+                    )}
+
                     {/* ID Pelanggan & Nama */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         <div>

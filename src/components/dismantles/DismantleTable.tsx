@@ -19,7 +19,7 @@ interface DismantleTableProps {
     startIndex: number;
     onOpenStatusModal: (task: DismantleTask) => void;
     onOpenEditModal: (task: DismantleTask) => void;
-    onDeleteTask: (taskId: string) => void;
+    onDeleteTask: (task: DismantleTask) => void;
 }
 
 export default function DismantleTable({
@@ -275,15 +275,7 @@ export default function DismantleTable({
                                         {/* Delete Ticket */}
                                         <button
                                             type="button"
-                                            onClick={() => {
-                                                if (
-                                                    confirm(
-                                                        `Yakin ingin menghapus tugas dismantle pelanggan ${task.customer_name} (${task.customer_id})?`
-                                                    )
-                                                ) {
-                                                    onDeleteTask(task.id);
-                                                }
-                                            }}
+                                            onClick={() => onDeleteTask(task)}
                                             className="p-1 rounded text-slate-400 hover:text-rose-700 hover:bg-rose-50 transition-colors shrink-0"
                                             title="Hapus Data Tugas"
                                         >

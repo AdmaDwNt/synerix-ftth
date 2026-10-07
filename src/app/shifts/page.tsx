@@ -838,11 +838,7 @@ export default function ShiftsPage() {
       {/* Top Header Banner */}
       <div className="p-5 sm:p-6 rounded-2xl bg-white border border-synerix-border shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-teal-50 text-teal-700 border border-teal-200 uppercase">
-              Operational Management
-            </span>
-            <span className="text-xs text-synerix-subtext">| Roster Spreadsheet Integration</span>
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             {dbStatus === "CONNECTED" && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -879,7 +875,7 @@ export default function ShiftsPage() {
             className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold shadow-xs transition-all active:scale-95"
           >
             <UserPlus className="h-4 w-4" />
-            <span>+ Input Baru</span>
+            <span>Input Baru</span>
           </button>
 
           {/* Tombol Edit Manual */}

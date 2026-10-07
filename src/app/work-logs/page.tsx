@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import {
-    Wrench,
     Plus,
     Search,
     Filter,
@@ -25,6 +24,9 @@ import DataTablePagination from "@/components/layout/DataTablePagination";
 import SummaryMetricsStrip from "@/components/layout/SummaryMetricsStrip";
 import EditWorkLogModal, { WorkLogItem } from "@/components/work-logs/EditWorkLogModal";
 import CustomSelect from "@/components/ui/CustomSelect";
+import BillingnesiaAutofillBanner from "@/components/ui/BillingnesiaAutofillBanner";
+import ToastNotification, { ToastItem } from "@/components/ui/ToastNotification";
+import { BillingnesiaScrapedData } from "@/lib/scraper/billingnesiaScraper";
 
 export default function WorkLogsPage() {
     const supabase = createClient();
@@ -37,6 +39,16 @@ export default function WorkLogsPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState("ALL");
     const [pasteText, setPasteText] = useState("");
+    const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+    const addToast = (item: Omit<ToastItem, "id">) => {
+        const id = crypto.randomUUID();
+        setToasts((prev) => [...prev, { ...item, id }]);
+    };
+
+    const removeToast = (id: string) => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+    };
 
     // Shortcut '/' untuk fokus ke kotak pencarian
     useEffect(() => {
@@ -179,6 +191,37 @@ export default function WorkLogsPage() {
         }));
     };
 
+    // Handler data autofill dari On-Demand Scraper Billingnesia
+    const handleScraperAutofill = (data: BillingnesiaScrapedData) => {
+        let cat: WorkLogItem["category"] = "MAINTENANCE_RETAIL";
+        const k = (data.category || "").toUpperCase();
+        if (k.includes("JARINGAN") || k.includes("NETWORK")) cat = "MAINTENANCE_NETWORK";
+        else if (k.includes("RETAIL") || k.includes("PELANGGAN")) cat = "MAINTENANCE_RETAIL";
+        else if (k.includes("PROJECT") || k.includes("INSTALASI")) cat = "PROJECT";
+        else if (k.includes("DISMANTLE") || k.includes("CABUT")) cat = "DISMANTLE";
+        else if (k) cat = "OTHER";
+
+        const titleText = data.ticket_id
+            ? `[${data.ticket_id}] ${data.customer_name || "Tiket Lapangan"}`
+            : data.customer_name || formData.title;
+
+        const infoLines = [
+            data.address ? `Alamat: ${data.address}` : "",
+            data.phone_number ? `WhatsApp/HP: ${data.phone_number}` : "",
+            data.unpaid_amount > 0 ? `Tunggakan: Rp ${data.unpaid_amount.toLocaleString("id-ID")}` : "",
+            data.device_type ? `ONT: ${data.device_type}` : "",
+        ].filter(Boolean).join(" | ");
+
+        setFormData((prev) => ({
+            ...prev,
+            title: titleText || prev.title,
+            category: cat,
+            case_description: prev.case_description ? `${prev.case_description}\n(${infoLines})` : infoLines,
+            latitude: data.latitude ?? prev.latitude,
+            longitude: data.longitude ?? prev.longitude,
+        }));
+    };
+
     // Submit Log Pekerjaan Baru (CREATE)
     const handleCreateSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -221,17 +264,53 @@ export default function WorkLogsPage() {
         setLoading(false);
     };
 
-    // Hapus Log Pekerjaan (DELETE)
-    const handleDeleteLog = async (logId: string) => {
+    // Hapus Log Pekerjaan langsung dengan Toast Notification (non-blocking)
+    const handleDirectDeleteLog = async (log: WorkLogItem) => {
+        const logId = log.id;
+
+        // 1. Optimistic removal dari UI
+        setLogs((prev) => prev.filter((l) => l.id !== logId));
+
+        // 2. Tampilkan Toast Notification mengambang dengan aksi Urungkan
+        addToast({
+            type: "success",
+            title: "Catatan Dihapus",
+            message: `Catatan "${log.title}" telah dihapus.`,
+            actionLabel: "Urungkan",
+            durationMs: 5000,
+            onAction: async () => {
+                try {
+                    await supabase.from("work_logs").insert([log]);
+                    setLogs((prev) => [log, ...prev]);
+                    addToast({
+                        type: "info",
+                        title: "Dibatalkan",
+                        message: `Catatan "${log.title}" berhasil dipulihkan.`,
+                    });
+                } catch (e: any) {
+                    console.error("Gagal mengurungkan:", e);
+                }
+            },
+        });
+
+        // 3. Eksekusi DELETE ke Supabase di background
         try {
             const { error } = await supabase.from("work_logs").delete().eq("id", logId);
             if (error) {
-                alert("Gagal menghapus: " + error.message);
-                return;
+                setLogs((prev) => [log, ...prev]);
+                addToast({
+                    type: "error",
+                    title: "Gagal Menghapus dari Database",
+                    message: error.message,
+                });
             }
-            setLogs((prev) => prev.filter((l) => l.id !== logId));
         } catch (err: unknown) {
-            alert("Gagal menghapus: " + (err instanceof Error ? err.message : String(err)));
+            setLogs((prev) => [log, ...prev]);
+            addToast({
+                type: "error",
+                title: "Error Tak Terduga",
+                message: err instanceof Error ? err.message : String(err),
+            });
         }
     };
 
@@ -264,10 +343,6 @@ export default function WorkLogsPage() {
             <div className="bg-white border-b border-synerix-border">
                 <div className="w-full px-4 sm:px-6 lg:px-8 py-5">
                     <div>
-                        <div className="flex items-center gap-2 text-xs font-semibold text-teal-700 bg-teal-50 px-2.5 py-1 rounded-md w-fit mb-1.5">
-                            <Wrench className="h-3.5 w-3.5" />
-                            Modul Pekerjaan Lapangan
-                        </div>
                         <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
                             Riwayat & Case Log Pekerjaan
                         </h1>
@@ -289,6 +364,7 @@ export default function WorkLogsPage() {
                             value: logs.filter((l) => l.category === "MAINTENANCE_RETAIL").length,
                             icon: <Home className="w-5 h-5 sm:w-6 sm:h-6" />,
                             colorScheme: "amber",
+                            filterValue: "MAINTENANCE_RETAIL",
                         },
                         {
                             id: "maint_network",
@@ -296,6 +372,7 @@ export default function WorkLogsPage() {
                             value: logs.filter((l) => l.category === "MAINTENANCE_NETWORK").length,
                             icon: <Wifi className="w-5 h-5 sm:w-6 sm:h-6" />,
                             colorScheme: "amber",
+                            filterValue: "MAINTENANCE_NETWORK",
                         },
                         {
                             id: "project",
@@ -303,15 +380,28 @@ export default function WorkLogsPage() {
                             value: logs.filter((l) => l.category === "PROJECT").length,
                             icon: <Briefcase className="w-5 h-5 sm:w-6 sm:h-6" />,
                             colorScheme: "amber",
+                            filterValue: "PROJECT",
                         },
                         {
                             id: "other",
                             label: "KEGIATAN LAINNYA",
-                            value: logs.filter((l) => l.category === "DISMANTLE").length,
+                            value: logs.filter((l) => l.category === "OTHER").length,
                             icon: <Megaphone className="w-5 h-5 sm:w-6 sm:h-6" />,
                             colorScheme: "amber",
+                            filterValue: "OTHER",
                         },
                     ]}
+                    activeId={selectedCategory !== "ALL" ? {
+                        MAINTENANCE_RETAIL: "maint_retail",
+                        MAINTENANCE_NETWORK: "maint_network",
+                        PROJECT: "project",
+                        OTHER: "other",
+                    }[selectedCategory] || null : null}
+                    onItemClick={(filterValue, itemId) => {
+                        setSelectedCategory((prev) =>
+                            prev === filterValue ? "ALL" : filterValue
+                        );
+                    }}
                 />
 
                 {/* 2. Main White Container (Matching Image 1) */}
@@ -330,17 +420,19 @@ export default function WorkLogsPage() {
                                     })}
                                 </h3>
                             </div>
-                            <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500 font-medium">
-                                <span className="flex items-center gap-1">
-                                    <span className="text-emerald-500 font-black">●</span> &le; 2 jam
-                                </span>
-                                <span className="flex items-center gap-1">
-                                    <span className="text-amber-500 font-black">●</span> 2-9 jam
-                                </span>
-                                <span className="flex items-center gap-1">
-                                    <span className="text-rose-500 font-black">●</span> &gt; 8 jam
-                                </span>
-                            </div>
+                            {filteredLogs.length > 0 && (
+                                <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500 font-medium">
+                                    <span className="flex items-center gap-1">
+                                        <span className="text-emerald-500 font-black">●</span> &le; 2 jam
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                        <span className="text-amber-500 font-black">●</span> 2-9 jam
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                        <span className="text-rose-500 font-black">●</span> &gt; 8 jam
+                                    </span>
+                                </div>
+                            )}
                         </div>
 
                         {/* Header Right: + Tambah Data */}
@@ -350,7 +442,7 @@ export default function WorkLogsPage() {
                             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-2xs active:scale-95 transition-all self-start sm:self-auto"
                         >
                             <Plus className="h-4 w-4" />
-                            <span>+ Tambah Data</span>
+                            <span>Tambah Data</span>
                         </button>
                     </div>
 
@@ -380,30 +472,6 @@ export default function WorkLogsPage() {
 
                         {/* Right: Category Filter Pills + Search Input */}
                         <div className="flex flex-wrap items-center gap-2 flex-1 md:justify-end">
-                            {/* Category Filter Dropdown / Pills */}
-                            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
-                                {[
-                                    { id: "ALL", label: "Semua" },
-                                    { id: "MAINTENANCE_NETWORK", label: "Maint. Jaringan" },
-                                    { id: "MAINTENANCE_RETAIL", label: "Maint. Retail" },
-                                    { id: "PROJECT", label: "Project" },
-                                    { id: "DISMANTLE", label: "Dismantle" },
-                                ].map((cat) => (
-                                    <button
-                                        key={cat.id}
-                                        type="button"
-                                        onClick={() => setSelectedCategory(cat.id)}
-                                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold shrink-0 transition-all ${
-                                            selectedCategory === cat.id
-                                                ? "bg-teal-800 text-white shadow-xs"
-                                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                                        }`}
-                                    >
-                                        {cat.label}
-                                    </button>
-                                ))}
-                            </div>
-
                             {/* Search Input Box */}
                             <div className="relative min-w-[210px] flex-1 sm:flex-initial">
                                 <input
@@ -436,7 +504,7 @@ export default function WorkLogsPage() {
                                 <FileText className="w-10 h-10 mx-auto text-slate-300 mb-2" />
                                 <h4 className="text-sm font-bold text-slate-800">Belum Ada Catatan Pekerjaan</h4>
                                 <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                                    Klik tombol "+ Tambah Data" untuk mendokumentasikan case atau perbaikan teknis pertama Anda.
+                                    Klik tombol "Tambah Data" untuk mendokumentasikan case atau perbaikan teknis pertama Anda.
                                 </p>
                             </div>
                         ) : (
@@ -447,7 +515,7 @@ export default function WorkLogsPage() {
                                         logs={paginatedLogs}
                                         startIndex={(currentPage - 1) * pageSize + 1}
                                         onOpenEditModal={(l) => setActiveLogForEdit(l)}
-                                        onDeleteLog={handleDeleteLog}
+                                        onDeleteLog={handleDirectDeleteLog}
                                     />
                                 </div>
 
@@ -459,7 +527,7 @@ export default function WorkLogsPage() {
                                                 key={log.id}
                                                 log={log}
                                                 onOpenEditModal={(l) => setActiveLogForEdit(l)}
-                                                onDeleteLog={handleDeleteLog}
+                                                onDeleteLog={handleDirectDeleteLog}
                                             />
                                         ))}
                                     </div>
@@ -492,14 +560,22 @@ export default function WorkLogsPage() {
                             <button
                                 type="button"
                                 onClick={() => setIsCreateModalOpen(false)}
-                                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+                                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
                             >
                                 ✕
                             </button>
                         </div>
 
-                        {/* Quick Paste Box */}
-                        <div className="mt-4 p-3 bg-gradient-to-br from-teal-50/80 to-emerald-50/60 rounded-xl border border-teal-200/80">
+                        {/* Banner Tarik Data Otomatis dari Billingnesia (On-Demand Scraper) */}
+                        <div className="mt-4">
+                            <BillingnesiaAutofillBanner
+                                onDataFetched={handleScraperAutofill}
+                                placeholder="Masukkan No. Tiket (TKT...) atau ID Pelanggan"
+                            />
+                        </div>
+
+                        {/* Quick Paste Box (Metode Manual / Cadangan) */}
+                        <div className="mt-3 p-3 bg-slate-50/90 rounded-xl border border-slate-200/80">
                             <div className="flex items-center gap-1.5 mb-1.5">
                                 <ClipboardPaste className="h-3.5 w-3.5 text-teal-700" />
                                 <span className="text-[11px] font-bold text-teal-800 uppercase tracking-wide">Quick Paste — Import dari Billing</span>
@@ -718,6 +794,9 @@ export default function WorkLogsPage() {
                 onClose={() => setActiveLogForEdit(null)}
                 onSuccess={handleEditSuccess}
             />
+
+            {/* Toast Notification Mengambang (Non-Blocking) */}
+            <ToastNotification toasts={toasts} onDismiss={removeToast} />
         </main>
     );
 }

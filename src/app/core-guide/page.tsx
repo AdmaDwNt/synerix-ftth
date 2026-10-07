@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Layers, Box, Sparkles } from "lucide-react";
+import { Box, Sparkles } from "lucide-react";
 import TIACalculator from "@/components/core-guide/TIACalculator";
 import ColorReferenceTable from "@/components/core-guide/ColorReferenceTable";
 import JointBoxList from "@/components/core-guide/JointBoxList";
@@ -101,10 +101,6 @@ export default function CoreGuidePage() {
                 <div className="w-full px-4 sm:px-6 lg:px-8 py-5">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
-                            <div className="flex items-center gap-2 text-xs font-semibold text-teal-700 bg-teal-50 px-2.5 py-1 rounded-md w-fit mb-2">
-                                <Layers className="h-3.5 w-3.5" />
-                                Modul Guide & Trakea Core Fiber FTTH
-                            </div>
                             <h1 className="text-xl sm:text-2xl font-bold text-synerix-text tracking-tight">
                                 Standar TIA-598 & Joint Box Trakea
                             </h1>

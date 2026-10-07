@@ -24,7 +24,7 @@ interface DismantleCardProps {
     task: DismantleTask;
     onOpenStatusModal: (task: DismantleTask) => void;
     onOpenEditModal: (task: DismantleTask) => void;
-    onDeleteTask: (taskId: string) => void;
+    onDeleteTask: (task: DismantleTask) => void;
 }
 
 export default function DismantleCard({
@@ -329,9 +329,7 @@ export default function DismantleCard({
                                 type="button"
                                 onClick={() => {
                                     setMenuOpen(false);
-                                    if (confirm(`Yakin ingin menghapus tugas dismantle untuk ${task.customer_name}? Data akan dihapus permanen dari Supabase.`)) {
-                                        onDeleteTask(task.id);
-                                    }
+                                    onDeleteTask(task);
                                 }}
                                 className="w-full text-left px-3 py-2 hover:bg-red-50 flex items-center gap-2 text-red-600 font-bold"
                             >

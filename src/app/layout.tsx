@@ -4,8 +4,20 @@ import "./globals.css";
 import Topbar from "@/components/layout/Topbar";
 
 export const metadata: Metadata = {
-  title: "FTTH Network Operations Platform",
-  description: "System FTTH Operations & Field Engineering Platform",
+  title: {
+    default: "Synerix FTTH - Network Operations Platform",
+    template: "%s | Synerix FTTH",
+  },
+  description: "Enterprise FTTH Operations, Field Engineering & Network Management Platform by Synerix",
+  icons: {
+    icon: [
+      { url: "/images/icon-synerix.png", type: "image/png" },
+      { url: "/icon.png", sizes: "48x48", type: "image/png" },
+      { url: "/favicon.ico" },
+    ],
+    shortcut: "/images/icon-synerix.png",
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({

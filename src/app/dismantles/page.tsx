@@ -17,6 +17,7 @@ import ImportDismantleModal from "@/components/dismantles/ImportDismantleModal";
 import InstallBookmarkletModal from "@/components/dismantles/InstallBookmarkletModal";
 import HandoverSummaryTable from "@/components/dismantles/HandoverSummaryTable";
 import CustomSelect, { SelectOption } from "@/components/ui/CustomSelect";
+import ToastNotification, { ToastItem } from "@/components/ui/ToastNotification";
 import {
     Truck,
     ListFilter,
@@ -86,6 +87,18 @@ export default function DismantlesPage() {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isBookmarkletModalOpen, setIsBookmarkletModalOpen] = useState(false);
+
+    // Floating Toast Notifications state (non-blocking)
+    const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+    const addToast = (item: Omit<ToastItem, "id">) => {
+        const id = crypto.randomUUID();
+        setToasts((prev) => [...prev, { ...item, id }]);
+    };
+
+    const removeToast = (id: string) => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+    };
 
     // Pagination state (Pilihan 10, 25, 50, 100 sesuai permintaan pengguna)
     const [currentPage, setCurrentPage] = useState(1);
@@ -164,22 +177,67 @@ export default function DismantlesPage() {
         setTasks((prev) => [...newTasks, ...prev]);
     };
 
-    // Hapus tugas dismantle dari Supabase
-    const handleDeleteTask = async (taskId: string) => {
+    // Hapus tugas dismantle langsung dengan Toast Notification (non-blocking)
+    const handleDirectDelete = async (task: DismantleTask) => {
+        const taskId = task.id;
+
+        // 1. Optimistic removal dari UI
+        setTasks((prev) => prev.filter((t) => t.id !== taskId));
+
+        // 2. Notifikasi Toast Mengambang dengan Opsi Urungkan (Undo)
+        addToast({
+            type: "success",
+            title: "Tugas Dismantle Dihapus",
+            message: `Tugas pelanggan ${task.customer_name} (${task.customer_id}) telah dihapus.`,
+            actionLabel: "Urungkan",
+            durationMs: 5000,
+            onAction: async () => {
+                // Kembalikan ke UI & database jika di-undo
+                try {
+                    await supabase.from("dismantle_tasks").insert([task]);
+                    setTasks((prev) => [task, ...prev]);
+                    addToast({
+                        type: "info",
+                        title: "Dibatalkan",
+                        message: `Tugas ${task.customer_name} berhasil dipulihkan.`,
+                    });
+                } catch (e: any) {
+                    console.error("Gagal mengurungkan:", e);
+                }
+            },
+        });
+
+        // 3. Eksekusi DELETE ke Supabase di background
         try {
-            const { error } = await supabase
+            const { data, error } = await supabase
                 .from("dismantle_tasks")
                 .delete()
-                .eq("id", taskId);
+                .eq("id", taskId)
+                .select();
 
-            if (error) {
-                alert("Gagal menghapus data: " + error.message);
-                return;
+            if (error || !data || data.length === 0) {
+                // Coba via server API
+                const res = await fetch(`/api/dismantles/${taskId}`, { method: "DELETE" });
+                const json = await res.json();
+
+                if (!res.ok || !json.success) {
+                    // Jika gagal hapus permanen karena RLS, kembalikan data dan beri notifikasi
+                    setTasks((prev) => [task, ...prev]);
+                    addToast({
+                        type: "error",
+                        title: "Gagal Hapus dari Database",
+                        message: "Izin RLS DELETE belum aktif di Supabase. Jalankan skrip fix_dismantle_delete_policy.sql di SQL Editor.",
+                        durationMs: 7000,
+                    });
+                }
             }
-
-            setTasks((prev) => prev.filter((t) => t.id !== taskId));
-        } catch (err: unknown) {
-            alert("Gagal menghapus: " + (err instanceof Error ? err.message : String(err)));
+        } catch (err: any) {
+            setTasks((prev) => [task, ...prev]);
+            addToast({
+                type: "error",
+                title: "Gagal Menghapus Data",
+                message: err?.message || "Terjadi kesalahan saat menghapus data.",
+            });
         }
     };
 
@@ -295,10 +353,6 @@ export default function DismantlesPage() {
             <div className="bg-white border-b border-synerix-border">
                 <div className="w-full px-4 sm:px-6 lg:px-8 py-5">
                     <div>
-                        <div className="flex items-center gap-2 text-xs font-semibold text-teal-700 bg-teal-50 px-2.5 py-1 rounded-md w-fit mb-1.5">
-                            <Truck className="h-3.5 w-3.5" />
-                            Modul Dismantle Grouping & Cluster Routing
-                        </div>
                         <h1 className="text-xl sm:text-2xl font-bold text-synerix-text tracking-tight">
                             Manajemen Penarikan Perangkat (ONT/STB)
                         </h1>
@@ -355,8 +409,14 @@ export default function DismantlesPage() {
             <div className="w-full px-4 sm:px-6 lg:px-8 pt-5 space-y-5">
                 {activeTab === "LIST" && (
                     <div className="space-y-6 animate-in fade-in duration-200">
-                        {/* 1. Top 4 Metric Cards (Matching Image 1) */}
+                        {/* 1. Top 4 Metric Cards (Clickable Status Filters) */}
                         <SummaryMetricsStrip
+                            activeId={selectedStatus === "ALL" ? undefined : selectedStatus.toLowerCase()}
+                            onItemClick={(filterValue) => {
+                                const targetStatus = filterValue as DismantleStatus;
+                                setSelectedStatus((prev) => (prev === targetStatus ? "ALL" : targetStatus));
+                                setCurrentPage(1);
+                            }}
                             items={[
                                 {
                                     id: "queue",
@@ -364,6 +424,7 @@ export default function DismantlesPage() {
                                     value: counts.queue,
                                     icon: <Inbox className="w-5 h-5 sm:w-6 sm:h-6" />,
                                     colorScheme: "amber",
+                                    filterValue: "QUEUE",
                                 },
                                 {
                                     id: "in_progress",
@@ -371,6 +432,7 @@ export default function DismantlesPage() {
                                     value: counts.inProgress,
                                     icon: <Truck className="w-5 h-5 sm:w-6 sm:h-6" />,
                                     colorScheme: "blue",
+                                    filterValue: "IN_PROGRESS",
                                 },
                                 {
                                     id: "completed",
@@ -378,6 +440,7 @@ export default function DismantlesPage() {
                                     value: counts.completed,
                                     icon: <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" />,
                                     colorScheme: "emerald",
+                                    filterValue: "COMPLETED",
                                 },
                                 {
                                     id: "failed",
@@ -385,6 +448,7 @@ export default function DismantlesPage() {
                                     value: counts.failed,
                                     icon: <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6" />,
                                     colorScheme: "rose",
+                                    filterValue: "FAILED",
                                 },
                             ]}
                         />
@@ -405,17 +469,19 @@ export default function DismantlesPage() {
                                             })}
                                         </h3>
                                     </div>
-                                    <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500 font-medium">
-                                        <span className="flex items-center gap-1">
-                                            <span className="text-emerald-500 font-black">●</span> &le; 2 jam
-                                        </span>
-                                        <span className="flex items-center gap-1">
-                                            <span className="text-amber-500 font-black">●</span> 2-9 jam
-                                        </span>
-                                        <span className="flex items-center gap-1">
-                                            <span className="text-rose-500 font-black">●</span> &gt; 8 jam
-                                        </span>
-                                    </div>
+                                    {!loading && processedTasks.length > 0 && (
+                                        <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500 font-medium">
+                                            <span className="flex items-center gap-1">
+                                                <span className="text-emerald-500 font-black">●</span> &le; 2 jam
+                                            </span>
+                                            <span className="flex items-center gap-1">
+                                                <span className="text-amber-500 font-black">●</span> 2-9 jam
+                                            </span>
+                                            <span className="flex items-center gap-1">
+                                                <span className="text-rose-500 font-black">●</span> &gt; 8 jam
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Header Right: + Tambah Data, Import, & Bookmarklet HP */}
@@ -436,7 +502,7 @@ export default function DismantlesPage() {
                                         className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-2xs active:scale-95 transition-all"
                                     >
                                         <Plus className="h-4 w-4" />
-                                        <span>+ Tambah Data</span>
+                                        <span>Tambah Data</span>
                                     </button>
 
                                     <button
@@ -602,7 +668,7 @@ export default function DismantlesPage() {
                                                 startIndex={(currentPage - 1) * pageSize + 1}
                                                 onOpenStatusModal={(t) => setActiveTaskForModal(t)}
                                                 onOpenEditModal={(t) => setActiveTaskForEdit(t)}
-                                                onDeleteTask={handleDeleteTask}
+                                                onDeleteTask={handleDirectDelete}
                                             />
                                         </div>
 
@@ -615,7 +681,7 @@ export default function DismantlesPage() {
                                                         task={task}
                                                         onOpenStatusModal={(t) => setActiveTaskForModal(t)}
                                                         onOpenEditModal={(t) => setActiveTaskForEdit(t)}
-                                                        onDeleteTask={handleDeleteTask}
+                                                        onDeleteTask={handleDirectDelete}
                                                     />
                                                 ))}
                                             </div>
@@ -715,6 +781,9 @@ export default function DismantlesPage() {
                     onSaveStatus={handleSaveStatus}
                 />
             )}
+
+            {/* Toast Notification Mengambang (Non-Blocking) */}
+            <ToastNotification toasts={toasts} onDismiss={removeToast} />
         </main>
     );
 }

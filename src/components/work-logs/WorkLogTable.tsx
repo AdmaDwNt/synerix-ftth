@@ -13,7 +13,7 @@ interface WorkLogTableProps {
     logs: WorkLogItem[];
     startIndex: number;
     onOpenEditModal: (log: WorkLogItem) => void;
-    onDeleteLog: (logId: string) => void;
+    onDeleteLog: (log: WorkLogItem) => void;
 }
 
 export default function WorkLogTable({
@@ -208,15 +208,7 @@ export default function WorkLogTable({
                                         {/* Delete Ticket */}
                                         <button
                                             type="button"
-                                            onClick={() => {
-                                                if (
-                                                    confirm(
-                                                        `Yakin ingin menghapus catatan pekerjaan "${log.title}"?`
-                                                    )
-                                                ) {
-                                                    onDeleteLog(log.id);
-                                                }
-                                            }}
+                                            onClick={() => onDeleteLog(log)}
                                             className="p-1 rounded text-slate-400 hover:text-rose-700 hover:bg-rose-50 transition-colors shrink-0"
                                             title="Hapus Catatan"
                                         >

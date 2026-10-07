@@ -141,12 +141,6 @@ export default function OverviewPage() {
       {/* Header Banner */}
       <div className="p-6 rounded-2xl bg-white border border-synerix-border shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-teal-50 text-teal-700 border border-teal-200 uppercase">
-              Field Operations Platform
-            </span>
-            <span className="text-xs text-synerix-subtext">| Powered by Synerix</span>
-          </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-synerix-text tracking-tight">
             Command Center <span className="text-teal-700">FTTH</span>
           </h1>

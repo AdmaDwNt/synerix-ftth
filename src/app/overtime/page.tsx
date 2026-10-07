@@ -114,12 +114,6 @@ export default function OvertimePage() {
       {/* Header Banner */}
       <div className="p-5 sm:p-6 rounded-2xl bg-white border border-synerix-border shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-teal-50 text-teal-700 border border-teal-200 uppercase">
-              Operational Management
-            </span>
-            <span className="text-xs text-synerix-subtext">| Jam Lembur & Insentif Maintenance</span>
-          </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-synerix-text tracking-tight flex items-center gap-2">
             <Clock className="h-6 w-6 text-teal-700 shrink-0" />
             <span>Pencatatan & Klaim Lembur (Overtime)</span>

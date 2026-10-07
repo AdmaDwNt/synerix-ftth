@@ -15,7 +15,7 @@ import {
 interface WorkLogCardProps {
     log: WorkLogItem;
     onOpenEditModal: (log: WorkLogItem) => void;
-    onDeleteLog: (logId: string) => void;
+    onDeleteLog: (log: WorkLogItem) => void;
 }
 
 export default function WorkLogCard({
@@ -213,9 +213,7 @@ export default function WorkLogCard({
                                 type="button"
                                 onClick={() => {
                                     setMenuOpen(false);
-                                    if (confirm(`Yakin ingin menghapus catatan pekerjaan "${log.title}"? Data akan dihapus permanen dari Supabase.`)) {
-                                        onDeleteLog(log.id);
-                                    }
+                                    onDeleteLog(log);
                                 }}
                                 className="w-full text-left px-3 py-2 hover:bg-red-50 flex items-center gap-2 text-red-600 font-bold"
                             >

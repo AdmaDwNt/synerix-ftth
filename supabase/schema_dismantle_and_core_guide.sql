@@ -83,14 +83,16 @@ ALTER TABLE public.dismantle_tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.joint_boxes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.joint_box_splices ENABLE ROW LEVEL SECURITY;
 
--- Allow anon & authenticated user to SELECT, INSERT, UPDATE
+-- Allow anon & authenticated user to SELECT, INSERT, UPDATE, DELETE
 CREATE POLICY "Public Read Dismantle Tasks" ON public.dismantle_tasks FOR SELECT USING (true);
 CREATE POLICY "Public Insert Dismantle Tasks" ON public.dismantle_tasks FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Dismantle Tasks" ON public.dismantle_tasks FOR UPDATE USING (true);
+CREATE POLICY "Public Delete Dismantle Tasks" ON public.dismantle_tasks FOR DELETE USING (true);
 
 CREATE POLICY "Public Read Joint Boxes" ON public.joint_boxes FOR SELECT USING (true);
 CREATE POLICY "Public Insert Joint Boxes" ON public.joint_boxes FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Joint Boxes" ON public.joint_boxes FOR UPDATE USING (true);
+CREATE POLICY "Public Delete Joint Boxes" ON public.joint_boxes FOR DELETE USING (true);
 
 CREATE POLICY "Public Read Splices" ON public.joint_box_splices FOR SELECT USING (true);
 CREATE POLICY "Public Insert Splices" ON public.joint_box_splices FOR INSERT WITH CHECK (true);
