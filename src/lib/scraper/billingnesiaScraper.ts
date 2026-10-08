@@ -8,15 +8,52 @@ import http from "node:http";
 import { URL } from "node:url";
 
 export interface BillingnesiaScrapedData {
+    // 1. Identitas Pokok
     ticket_id?: string;
     customer_id?: string;
     customer_name: string;
-    phone_number: string;
-    address: string;
+    status_pelanggan?: string;
+    badges?: string[];
+
+    // 2. Data Pribadi (Sesuai Gambar 1)
+    register_date?: string;          // TGL DAFTAR (e.g. "2026-09-29 10:58:19")
+    id_card_number?: string;         // NO KTP (e.g. "3506044403560001")
+    phone_number: string;            // NO WA 1 (e.g. "085604994332")
+    phone_number_2?: string;         // NO WA 2 / TELP
+    email?: string;                  // EMAIL
+    region?: string;                 // WILAYAH (e.g. "Kabupaten Kediri")
+    district?: string;               // KECAMATAN (e.g. "Kecamatan Ngadiluwih")
+    village?: string;                // DESA (e.g. "Banjarejo")
+    hamlet?: string;                 // DUSUN (e.g. "Kendaldoyong")
+    address: string;                 // ALAMAT LENGKAP
+    marketer?: string;               // MARKETER (e.g. "ASTERIX")
+    registration_note?: string;      // CATATAN DAFTAR
+    commitment?: string;             // KOMITMEN
+
+    // 3. Data Instalasi (Sesuai Gambar 1)
+    server?: string;                 // SERVER (e.g. "BANJAREJO")
+    ip_address?: string;             // IP ADDRESS (e.g. "192.168.127.26")
+    pppoe_username?: string;         // USERNAME PPPOE (e.g. "0101010402102")
+    pppoe_password?: string;         // PASSWORD PPPOE (e.g. "02102026")
+    parent_odp?: string;             // ODP (e.g. "ODP RIJAL")
+    cable_outdoor?: string;          // KABEL OUTDOOR (e.g. "25 m")
+    cable_indoor?: string;           // KABEL INDOOR (e.g. "7 m")
+
+    // 4. Data Tiket (Sesuai Gambar 3 jika sumber pencarian adalah tiket)
+    ticket_creator?: string;         // USER PEMBUAT (e.g. "Fariellilrio Andreano")
+    ticket_type?: string;            // JENIS TIKET (e.g. "TEKNIS")
+    category?: string;               // KATEGORI TIKET (e.g. "MAINTENANCE RETAIL")
+    ticket_customer_summary?: string;// PELANGGAN (e.g. "0501040302019 SAHAM SAMUDRA")
+    ticket_indication?: string;      // KETERANGAN / INDIKASI AWAL (e.g. "down")
+    ticket_pic?: string;             // PJ AWAL (e.g. "Fariellilrio Andreano")
+    ticket_tag?: string;             // TAG KARYAWAN
+    ticket_attachment?: string;      // LAMPIRAN
+    ticket_progress_percent?: string;// Progress (e.g. "100%")
+
+    // 5. Parameter Teknis & Finansial
     latitude: number;
     longitude: number;
     coordinates_found: boolean;
-    category?: string;
     unpaid_amount: number;
     device_type: string;
     billing_url: string;
@@ -260,7 +297,68 @@ async function getActiveSessionCookie(baseUrl: string, forceRefresh = false): Pr
 }
 
 /**
- * Parsing HTML data Billingnesia
+ * Helper ekstraksi nilai field dari HTML Billingnesia berdasarkan label
+ * Bekerja pada tabel, div kontainer, maupun layout inline
+ */
+function extractFieldValue(
+    rawHtml: string,
+    plainText: string,
+    labels: string[],
+    stopLabels: string[] = []
+): string {
+    for (const label of labels) {
+        const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+        // 1. Ekstraksi dari struktur DOM: <...label...> ... <...value...>
+        const domPattern = new RegExp(
+            `<(?:td|th|label|span|div|p|h\\d)[^>]*>\\s*#?\\s*${escapedLabel}\\s*<\\/(?:td|th|label|span|div|p|h\\d)>\\s*(?:<[^>]+>)*\\s*<([a-z0-9]+)[^>]*>([\\s\\S]*?)<\\/\\1>`,
+            "i"
+        );
+        const domMatch = rawHtml.match(domPattern);
+        if (domMatch && domMatch[2]) {
+            let val = domMatch[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+            if (val && val !== "-" && val.toLowerCase() !== "null" && !val.includes(label)) {
+                return val;
+            }
+        }
+
+        // 2. Ekstraksi dari Table Row: <tr><td>LABEL</td><td>VALUE</td></tr>
+        const trPattern = new RegExp(
+            `<tr[^>]*>[\\s\\S]*?#?\\s*${escapedLabel}[\\s\\S]*?<\\/td>\\s*<td[^>]*>([\\s\\S]*?)<\\/td>`,
+            "i"
+        );
+        const trMatch = rawHtml.match(trPattern);
+        if (trMatch && trMatch[1]) {
+            let val = trMatch[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+            if (val && val !== "-" && val.toLowerCase() !== "null") {
+                return val;
+            }
+        }
+
+        // 3. Ekstraksi dari Plain Text terstruktur
+        // Mengambil teks dari setelah LABEL sampai salah satu stopLabel atau batas baris
+        const stopPattern = stopLabels.length > 0
+            ? stopLabels.map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")
+            : "(?:TGL|STATUS|NO|NAMA|EMAIL|WILAYAH|KECAMATAN|DESA|DUSUN|ALAMAT|MARKETER|CATATAN|KOMITMEN|SERVER|IP|USERNAME|PASSWORD|ODP|KABEL|USER|JENIS|KATEGORI|PELANGGAN|KETERANGAN|PJ|TAG|LAMPIRAN)";
+
+        const textPattern = new RegExp(
+            `(?:^|\\s)#?\\s*${escapedLabel}\\s*[:\\s]\\s*([^\\n\\r]{1,150}?)(?=(?:\\s+(?:${stopPattern})\\b)|$|<)`,
+            "i"
+        );
+        const textMatch = plainText.match(textPattern);
+        if (textMatch && textMatch[1]) {
+            let val = textMatch[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+            // Bersihkan jika ada tanda hubung '-' tunggal
+            if (val && val !== "-" && val.toLowerCase() !== "null") {
+                return val;
+            }
+        }
+    }
+    return "";
+}
+
+/**
+ * Parsing HTML data Billingnesia lengkap (Detail Pelanggan Gambar 1 & Detail Tiket Gambar 3)
  */
 export function parseBillingnesiaHTML(
     rawHtml: string,
@@ -275,7 +373,6 @@ export function parseBillingnesiaHTML(
         .replace(/x-data=(["'])(?:(?!\1)[\s\S])*\1/gi, " ")
         .replace(/x-init=(["'])(?:(?!\1)[\s\S])*\1/gi, " ");
 
-    // Potong navigasi/sidebar jika ada marker konten detail utama
     let mainContentHtml = htmlClean;
     const contentMarker = htmlClean.search(/\b(?:Detail Tiket|Detail Pelanggan|Info Pribadi|Info Tiket)\b/i);
     if (contentMarker !== -1) {
@@ -309,14 +406,18 @@ export function parseBillingnesiaHTML(
         customerName = headerComboMatch[2].trim();
     }
 
-    // Pola B (Header Detail Pelanggan): "Detail SRI RAHAYU 0101010602040"
+    // Pola B (Header Detail Pelanggan Gambar 1): e.g. "WINARNI 0101010402102"
     if (!customerName || !customerId) {
         const detailCustomerHeaderMatch = plainText.match(
+            /Detail\s+Pelanggan\s+(\d{10,13})\s+([A-Za-z\s.,'-]+?)\s+\1/i
+        ) || plainText.match(
             /Detail\s+([A-Za-z\s.,'-]+?)\s+(\d{10,13})\s+(?:ITN|PJK|PELANGGAN|AKTIF)/i
+        ) || plainText.match(
+            /([A-Z\s]{3,40})\s+(\d{10,13})\s+ITN/
         );
         if (detailCustomerHeaderMatch) {
-            if (!customerName) customerName = detailCustomerHeaderMatch[1].trim();
-            if (!customerId) customerId = detailCustomerHeaderMatch[2].trim();
+            if (!customerName && detailCustomerHeaderMatch[1]) customerName = detailCustomerHeaderMatch[1].trim();
+            if (!customerId && detailCustomerHeaderMatch[2]) customerId = detailCustomerHeaderMatch[2].trim();
         }
     }
 
@@ -331,23 +432,23 @@ export function parseBillingnesiaHTML(
         }
     }
 
-    // Pola D Fallback untuk Customer ID
+    // Ekstrak langsung dari "#ID PELANGGAN"
+    const directIdPelanggan = extractFieldValue(htmlWithoutScripts, plainText, ["ID PELANGGAN", "#ID PELANGGAN"]);
+    if (directIdPelanggan && /^\d{10,13}$/.test(directIdPelanggan)) {
+        customerId = directIdPelanggan;
+    }
+
+    // Ekstrak langsung dari "NAMA PELANGGAN"
+    const directNamaPelanggan = extractFieldValue(htmlWithoutScripts, plainText, ["NAMA PELANGGAN"]);
+    if (directNamaPelanggan) {
+        customerName = directNamaPelanggan;
+    }
+
+    // Pola Fallback untuk Customer ID
     if (!customerId) {
         const cidMatch = plainText.match(/\b01\d{8,11}\b/) || plainText.match(/\b\d{10,13}\b/) || query.match(/^\d{10,13}$/);
         if (cidMatch) {
             customerId = cidMatch[0];
-        }
-    }
-
-    // Pola E Fallback untuk Customer Name
-    if (!customerName) {
-        const nameHeaderMatch = htmlWithoutScripts.match(
-            /<(?:h[1-4]|div|span)[^>]*class=["'][^"']*(?:customer-name|card-title|font-bold|text-lg)[^"']*["'][^>]*>([\s\S]*?)<\/(?:h[1-4]|div|span)>/i
-        );
-        if (nameHeaderMatch) {
-            let rawName = nameHeaderMatch[1].replace(/<[^>]+>/g, "").trim();
-            if (rawName.includes("-")) rawName = rawName.split("-")[1];
-            customerName = rawName.replace(/Detail Pelanggan|Tiket|Pelanggan|Menu Utama/gi, "").trim();
         }
     }
 
@@ -360,28 +461,43 @@ export function parseBillingnesiaHTML(
             .trim();
     }
 
-    // 3. Ekstrak No. WhatsApp / HP (08... atau 628...)
-    let phoneNumber = "";
-    const phoneLabeledMatch = plainText.match(
-        /(?:Telepon|WhatsApp|No\.?\s*HP|No\.?\s*WA|Kontak)[\s:]*([0-9]{9,14})/i
-    );
-    if (phoneLabeledMatch) {
-        phoneNumber = phoneLabeledMatch[1].trim();
-    } else {
-        const phoneMatch = plainText.match(/\b(08\d{8,11}|628\d{8,11})\b/);
-        if (phoneMatch) {
-            phoneNumber = phoneMatch[0];
-        }
+    // 3. Ekstrak Badges (Gambar 1: ITN ON/OFF, PJK ON/OFF, PELANGGAN AKTIF)
+    const badges: string[] = [];
+    if (/ITN\s+ON/i.test(plainText)) badges.push("ITN ON");
+    else if (/ITN\s+OFF/i.test(plainText)) badges.push("ITN OFF");
+
+    if (/PJK\s+ON/i.test(plainText)) badges.push("PJK ON");
+    else if (/PJK\s+OFF/i.test(plainText)) badges.push("PJK OFF");
+
+    let statusPelanggan = "PELANGGAN AKTIF";
+    if (/PELANGGAN\s+TIDAK\s+AKTIF|NON\s+AKTIF/i.test(plainText)) {
+        statusPelanggan = "PELANGGAN TIDAK AKTIF";
+        badges.push("TIDAK AKTIF");
+    } else if (/PELANGGAN\s+AKTIF|AKTIF/i.test(plainText)) {
+        statusPelanggan = "PELANGGAN AKTIF";
+        badges.push("PELANGGAN AKTIF");
     }
 
-    // 4. Ekstrak Alamat Lengkap
-    let address = "";
-    const addrCellMatch = htmlWithoutScripts.match(
-        /(?:Alamat|Alamat Pelanggan|Address)[\s\S]{0,100}?<td[^>]*>([\s\S]*?)<\/td>/i
-    );
-    if (addrCellMatch) {
-        address = addrCellMatch[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    } else {
+    // 4. Ekstrak Data Pribadi (Gambar 1)
+    const registerDate = extractFieldValue(htmlWithoutScripts, plainText, ["TGL DAFTAR", "TANGGAL DAFTAR"]);
+    const idCardNumber = extractFieldValue(htmlWithoutScripts, plainText, ["NO KTP", "NOMOR KTP"]);
+    
+    // No WA 1 & No WA 2
+    let phoneNumber = extractFieldValue(htmlWithoutScripts, plainText, ["NO WA 1", "WHATSAPP 1", "NO WA", "NO HP"]);
+    if (!phoneNumber) {
+        const phoneMatch = plainText.match(/\b(08\d{8,11}|628\d{8,11})\b/);
+        if (phoneMatch) phoneNumber = phoneMatch[0];
+    }
+    const phoneNumber2 = extractFieldValue(htmlWithoutScripts, plainText, ["NO WA 2 / TELP", "NO WA 2", "NO TELP", "TELEPON"]);
+
+    const email = extractFieldValue(htmlWithoutScripts, plainText, ["EMAIL"]);
+    const region = extractFieldValue(htmlWithoutScripts, plainText, ["WILAYAH"]);
+    const district = extractFieldValue(htmlWithoutScripts, plainText, ["KECAMATAN"]);
+    const village = extractFieldValue(htmlWithoutScripts, plainText, ["DESA"]);
+    const hamlet = extractFieldValue(htmlWithoutScripts, plainText, ["DUSUN"]);
+    
+    let address = extractFieldValue(htmlWithoutScripts, plainText, ["ALAMAT LENGKAP", "ALAMAT"]);
+    if (!address) {
         const addrRegex =
             /\b(?:jalan|jl\.?|dusun|desa|dsn\.?|kecamatan|kec\.?|kelurahan|kel\.\s*|komplek|perum|rt\s*\d+|rw\s*\d+)\b[\s\S]*?(?=\b(?:MARKETER|COMMITMENT|SERVER|KOMITMEN|PAKET|TAGIHAN|STATUS|TANGGAL|BIAYA|INVOICE|TELEPON|WHATSAPP|DISMANTLE|CATATAN)\b|<div|<tr|<p|<h\d|$)/i;
         const addrMatch = plainText.match(addrRegex);
@@ -394,7 +510,50 @@ export function parseBillingnesiaHTML(
         }
     }
 
-    // 5. Ekstrak Total Tunggakan (Invoice Jatuh Tempo / Belum Bayar)
+    const marketer = extractFieldValue(htmlWithoutScripts, plainText, ["MARKETER"]);
+    const registrationNote = extractFieldValue(htmlWithoutScripts, plainText, ["CATATAN DAFTAR"]);
+    const commitment = extractFieldValue(htmlWithoutScripts, plainText, ["KOMITMEN"]);
+
+    // 5. Ekstrak Data Instalasi (Gambar 1)
+    const server = extractFieldValue(htmlWithoutScripts, plainText, ["SERVER"]);
+    const ipAddress = extractFieldValue(htmlWithoutScripts, plainText, ["IP ADDRESS", "IP"]);
+    const pppoeUsername = extractFieldValue(htmlWithoutScripts, plainText, ["USERNAME PPPOE", "PPPOE USERNAME"]);
+    const pppoePassword = extractFieldValue(htmlWithoutScripts, plainText, ["PASSWORD PPPOE", "PPPOE PASSWORD"]);
+    const parentOdp = extractFieldValue(htmlWithoutScripts, plainText, ["ODP", "PARENT ODP"]);
+    const cableOutdoor = extractFieldValue(htmlWithoutScripts, plainText, ["KABEL OUTDOOR"]);
+    const cableIndoor = extractFieldValue(htmlWithoutScripts, plainText, ["KABEL INDOOR"]);
+
+    // 6. Ekstrak Data Tiket (Gambar 3 - jika halaman tiket)
+    const ticketCreator = extractFieldValue(htmlWithoutScripts, plainText, ["USER PEMBUAT"]);
+    const ticketType = extractFieldValue(htmlWithoutScripts, plainText, ["JENIS TIKET"]);
+    const ticketCategory = extractFieldValue(htmlWithoutScripts, plainText, ["KATEGORI TIKET"]);
+    const ticketCustomerSummary = extractFieldValue(htmlWithoutScripts, plainText, ["PELANGGAN"]);
+    const ticketIndication = extractFieldValue(htmlWithoutScripts, plainText, ["KETERANGAN / INDIKASI AWAL", "KETERANGAN"]);
+    const ticketPic = extractFieldValue(htmlWithoutScripts, plainText, ["PJ AWAL", "PENANGGUNG JAWAB"]);
+    const ticketTag = extractFieldValue(htmlWithoutScripts, plainText, ["TAG KARYAWAN"]);
+    const ticketAttachment = extractFieldValue(htmlWithoutScripts, plainText, ["LAMPIRAN"]);
+
+    // Ticket progress %
+    let ticketProgressPercent = "";
+    const pctMatch = plainText.match(/\b(\d{1,3})%\b/);
+    if (pctMatch) {
+        ticketProgressPercent = `${pctMatch[1]}%`;
+    }
+
+    // 7. Kategori Tiket Normalisasi
+    let category = ticketCategory || "MAINTENANCE RETAIL";
+    const upperText = plainText.toUpperCase();
+    if (upperText.includes("MAINTENANCE JARINGAN")) {
+        category = "MAINTENANCE JARINGAN";
+    } else if (upperText.includes("MAINTENANCE RETAIL")) {
+        category = "MAINTENANCE RETAIL";
+    } else if (upperText.includes("PROJECT")) {
+        category = "PROJECT";
+    } else if (upperText.includes("KEGIATAN LAINNYA")) {
+        category = "KEGIATAN LAINNYA";
+    }
+
+    // 8. Ekstrak Total Tunggakan (Invoice Jatuh Tempo / Belum Bayar)
     let unpaidAmount = 0;
     const rowRegex = /<tr[\s\S]*?<\/tr>/gi;
     let rowMatch;
@@ -416,7 +575,7 @@ export function parseBillingnesiaHTML(
         }
     }
 
-    // 6. Ekstrak Koordinat Lat/Lng dari Google Maps Link
+    // 9. Ekstrak Koordinat Lat/Lng dari Google Maps Link
     let latitude = -7.8231; // Default fallback Kediri
     let longitude = 111.9174;
     let coordinatesFound = false;
@@ -443,20 +602,7 @@ export function parseBillingnesiaHTML(
         }
     }
 
-    // 7. Ekstrak Kategori Tiket
-    let category = "MAINTENANCE RETAIL";
-    const upperText = plainText.toUpperCase();
-    if (upperText.includes("MAINTENANCE JARINGAN")) {
-        category = "MAINTENANCE JARINGAN";
-    } else if (upperText.includes("MAINTENANCE RETAIL")) {
-        category = "MAINTENANCE RETAIL";
-    } else if (upperText.includes("PROJECT")) {
-        category = "PROJECT";
-    } else if (upperText.includes("KEGIATAN LAINNYA")) {
-        category = "KEGIATAN LAINNYA";
-    }
-
-    // 8. Ekstrak Tipe Perangkat ONT
+    // 10. Ekstrak Tipe Perangkat ONT
     let deviceType = "ONT ZTE F609";
     const ontMatch = plainText.match(/\b(ZTE\s+[A-Z0-9]+|HUAWEI\s+[A-Z0-9]+|FIBERHOME\s+[A-Z0-9]+)\b/i);
     if (ontMatch) {
@@ -464,15 +610,52 @@ export function parseBillingnesiaHTML(
     }
 
     return {
+        // Identitas
         ticket_id: ticketId,
         customer_id: customerId,
         customer_name: customerName,
+        status_pelanggan: statusPelanggan,
+        badges,
+
+        // Data Pribadi (Gambar 1)
+        register_date: registerDate || undefined,
+        id_card_number: idCardNumber || undefined,
         phone_number: phoneNumber,
+        phone_number_2: phoneNumber2 || undefined,
+        email: email || undefined,
+        region: region || undefined,
+        district: district || undefined,
+        village: village || undefined,
+        hamlet: hamlet || undefined,
         address: address,
+        marketer: marketer || undefined,
+        registration_note: registrationNote || undefined,
+        commitment: commitment || undefined,
+
+        // Data Instalasi (Gambar 1)
+        server: server || undefined,
+        ip_address: ipAddress || undefined,
+        pppoe_username: pppoeUsername || undefined,
+        pppoe_password: pppoePassword || undefined,
+        parent_odp: parentOdp || undefined,
+        cable_outdoor: cableOutdoor || undefined,
+        cable_indoor: cableIndoor || undefined,
+
+        // Data Tiket (Gambar 3)
+        ticket_creator: ticketCreator || undefined,
+        ticket_type: ticketType || undefined,
+        category,
+        ticket_customer_summary: ticketCustomerSummary || undefined,
+        ticket_indication: ticketIndication || undefined,
+        ticket_pic: ticketPic || undefined,
+        ticket_tag: ticketTag || undefined,
+        ticket_attachment: ticketAttachment || undefined,
+        ticket_progress_percent: ticketProgressPercent || undefined,
+
+        // Teknis & Finansial
         latitude,
         longitude,
         coordinates_found: coordinatesFound,
-        category,
         unpaid_amount: unpaidAmount,
         device_type: deviceType,
         billing_url: targetUrl,
@@ -630,15 +813,36 @@ export async function scrapeBillingnesiaData(
                 });
                 if (!custRes.body.includes("LOGIN | BILLINGNESIA")) {
                     const custData = parseBillingnesiaHTML(custRes.body, custUrl, data.customer_id);
-                    if (custData.customer_name && !data.customer_name) {
-                        data.customer_name = custData.customer_name;
+
+                    // Salin semua field data pribadi & instalasi pelanggan
+                    if (custData.customer_name && !data.customer_name) data.customer_name = custData.customer_name;
+                    if (custData.status_pelanggan) data.status_pelanggan = custData.status_pelanggan;
+                    if (custData.badges && custData.badges.length > 0) {
+                        data.badges = Array.from(new Set([...(data.badges || []), ...custData.badges]));
                     }
-                    if (custData.phone_number) {
-                        data.phone_number = custData.phone_number;
-                    }
-                    if (custData.address) {
-                        data.address = custData.address;
-                    }
+                    if (custData.register_date) data.register_date = custData.register_date;
+                    if (custData.id_card_number) data.id_card_number = custData.id_card_number;
+                    if (custData.phone_number) data.phone_number = custData.phone_number;
+                    if (custData.phone_number_2) data.phone_number_2 = custData.phone_number_2;
+                    if (custData.email) data.email = custData.email;
+                    if (custData.region) data.region = custData.region;
+                    if (custData.district) data.district = custData.district;
+                    if (custData.village) data.village = custData.village;
+                    if (custData.hamlet) data.hamlet = custData.hamlet;
+                    if (custData.address) data.address = custData.address;
+                    if (custData.marketer) data.marketer = custData.marketer;
+                    if (custData.registration_note) data.registration_note = custData.registration_note;
+                    if (custData.commitment) data.commitment = custData.commitment;
+
+                    // Data Instalasi
+                    if (custData.server) data.server = custData.server;
+                    if (custData.ip_address && !data.ip_address) data.ip_address = custData.ip_address;
+                    if (custData.pppoe_username) data.pppoe_username = custData.pppoe_username;
+                    if (custData.pppoe_password) data.pppoe_password = custData.pppoe_password;
+                    if (custData.parent_odp) data.parent_odp = custData.parent_odp;
+                    if (custData.cable_outdoor) data.cable_outdoor = custData.cable_outdoor;
+                    if (custData.cable_indoor) data.cable_indoor = custData.cable_indoor;
+
                     if (custData.coordinates_found) {
                         data.latitude = custData.latitude;
                         data.longitude = custData.longitude;

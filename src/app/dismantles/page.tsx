@@ -18,6 +18,7 @@ import InstallBookmarkletModal from "@/components/dismantles/InstallBookmarkletM
 import HandoverSummaryTable from "@/components/dismantles/HandoverSummaryTable";
 import CustomSelect, { SelectOption } from "@/components/ui/CustomSelect";
 import ToastNotification, { ToastItem } from "@/components/ui/ToastNotification";
+import { syncDismantleToWorkLogs } from "@/lib/services/dismantleWorkLogSync";
 import {
     Truck,
     ListFilter,
@@ -163,13 +164,21 @@ export default function DismantlesPage() {
     };
 
     // Callback saat input manual berhasil
-    const handleAddSuccess = (newTask: DismantleTask) => {
+    const handleAddSuccess = async (newTask: DismantleTask) => {
         setTasks((prev) => [newTask, ...prev]);
+        // Jika tugas langsung berstatus IN_PROGRESS atau COMPLETED, otomatis sinkronkan ke daftar pekerjaan
+        if (newTask.status !== "QUEUE") {
+            await syncDismantleToWorkLogs(newTask, supabase);
+        }
     };
 
     // Callback saat edit berhasil
-    const handleEditSuccess = (updatedTask: DismantleTask) => {
+    const handleEditSuccess = async (updatedTask: DismantleTask) => {
         setTasks((prev) => prev.map((t) => (t.id === updatedTask.id ? updatedTask : t)));
+        // Sinkronisasi otomatis ke work_logs jika sudah ada progres
+        if (updatedTask.status !== "QUEUE") {
+            await syncDismantleToWorkLogs(updatedTask, supabase);
+        }
     };
 
     // Callback saat import batch berhasil
@@ -259,6 +268,21 @@ export default function DismantlesPage() {
                     updated_at: new Date().toISOString(),
                 })
                 .eq("id", updatedTask.id);
+
+            // SINKRONISASI OTOMATIS KE DAFTAR PEKERJAAN (WORK LOGS):
+            // Jika status tugas bukan QUEUE (artinya sudah ada progres: IN_PROGRESS atau COMPLETED),
+            // otomatis dicatat / disinkronkan ke daftar pekerjaan.
+            if (updatedTask.status !== "QUEUE") {
+                const syncResult = await syncDismantleToWorkLogs(updatedTask, supabase);
+                if (syncResult.synced) {
+                    addToast({
+                        type: "info",
+                        title: "Disinkronkan ke Pekerjaan",
+                        message: `Tugas ${updatedTask.customer_name} otomatis tercatat di modul Pekerjaan Lapangan.`,
+                        durationMs: 4000,
+                    });
+                }
+            }
         } catch (err) {
             console.warn("Gagal update ke Supabase, menyimpan ke local state:", err);
         }
