@@ -7,6 +7,55 @@ import https from "node:https";
 import http from "node:http";
 import { URL } from "node:url";
 
+export interface CustomerServiceItem {
+    name: string;
+    price: string;
+    cycle: string;
+    issue_period: string;
+    status: string;
+}
+
+export interface CustomerInvoiceItem {
+    invoice_no: string;
+    period: string;
+    amount: string;
+    due_date: string;
+    status: string;
+    paid_date?: string;
+}
+
+export interface CustomerTicketItem {
+    ticket_id: string;
+    created_at: string;
+    last_action: string;
+    progress: string;
+    status: string;
+}
+
+export interface CustomerIsolirItem {
+    isolated_date: string;
+    reopened_date?: string;
+    reason?: string;
+    status: string;
+}
+
+export interface CustomerLogItem {
+    date: string;
+    user: string;
+    activity: string;
+}
+
+export interface CustomerTabCounts {
+    services?: number;
+    invoices?: number;
+    tickets?: number;
+    isolirs?: number;
+    logs?: number;
+}
+
+import { cleanPhoneNumber, resolveDisplayPhone } from "@/lib/utils/phoneHelper";
+export { cleanPhoneNumber, resolveDisplayPhone };
+
 export interface BillingnesiaScrapedData {
     // 1. Identitas Pokok
     ticket_id?: string;
@@ -18,8 +67,9 @@ export interface BillingnesiaScrapedData {
     // 2. Data Pribadi (Sesuai Gambar 1)
     register_date?: string;          // TGL DAFTAR (e.g. "2026-09-29 10:58:19")
     id_card_number?: string;         // NO KTP (e.g. "3506044403560001")
-    phone_number: string;            // NO WA 1 (e.g. "085604994332")
-    phone_number_2?: string;         // NO WA 2 / TELP
+    phone_number: string;            // NO WA Terpilih (Sesuai Hirarki)
+    phone_number_1?: string;         // NO WA 1 Asli
+    phone_number_2?: string;         // NO WA 2 / TELP Asli
     email?: string;                  // EMAIL
     region?: string;                 // WILAYAH (e.g. "Kabupaten Kediri")
     district?: string;               // KECAMATAN (e.g. "Kecamatan Ngadiluwih")
@@ -50,7 +100,15 @@ export interface BillingnesiaScrapedData {
     ticket_attachment?: string;      // LAMPIRAN
     ticket_progress_percent?: string;// Progress (e.g. "100%")
 
-    // 5. Parameter Teknis & Finansial
+    // 5. Data Tab Lengkap Billingnesia (Gambar 2 & Screenshot Baru)
+    tab_counts?: CustomerTabCounts;
+    services?: CustomerServiceItem[];
+    invoices?: CustomerInvoiceItem[];
+    tickets?: CustomerTicketItem[];
+    isolirs?: CustomerIsolirItem[];
+    logs?: CustomerLogItem[];
+
+    // 6. Parameter Teknis & Finansial
     latitude: number;
     longitude: number;
     coordinates_found: boolean;
@@ -296,6 +354,69 @@ async function getActiveSessionCookie(baseUrl: string, forceRefresh = false): Pr
     return await authenticateBillingnesia(baseUrl);
 }
 
+interface ParsedHtmlTable {
+    headers: string[];
+    rows: string[][];
+}
+
+/**
+ * Ekstraksi seluruh elemen <table> dari HTML ke dalam baris dan kolom terstruktur
+ */
+function extractHtmlTables(rawHtml: string): ParsedHtmlTable[] {
+    const tableRegex = /<table\b[^>]*>([\s\S]*?)<\/table>/gi;
+    const tables: ParsedHtmlTable[] = [];
+
+    let tableMatch;
+    while ((tableMatch = tableRegex.exec(rawHtml)) !== null) {
+        const tableHtml = tableMatch[1];
+        const trRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+        const allRows: string[][] = [];
+
+        let trMatch;
+        while ((trMatch = trRegex.exec(tableHtml)) !== null) {
+            const trHtml = trMatch[1];
+            const cellRegex = /<(?:td|th)\b[^>]*>([\s\S]*?)<\/(?:td|th)>/gi;
+            const cells: string[] = [];
+
+            let cellMatch;
+            while ((cellMatch = cellRegex.exec(trHtml)) !== null) {
+                const cellText = cellMatch[1]
+                    .replace(/<[^>]+>/g, " ")
+                    .replace(/&nbsp;/g, " ")
+                    .replace(/\s+/g, " ")
+                    .trim();
+                cells.push(cellText);
+            }
+
+            if (cells.length > 0) {
+                allRows.push(cells);
+            }
+        }
+
+        if (allRows.length > 0) {
+            const headers = allRows[0].map((h) => h.toUpperCase());
+            const rows = allRows.slice(1);
+            tables.push({ headers, rows });
+        }
+    }
+
+    return tables;
+}
+
+/**
+ * Ekstraksi angka badge tab pada header tab Billingnesia (e.g. Layanan 2, Invoice 21, Tiket 5)
+ */
+function extractBadgeCount(html: string, tabLabel: string): number {
+    const escaped = tabLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const reg = new RegExp(`${escaped}\\s*(?:<[^>]+>\\s*)*\\(?(\\d+)\\)?`, "i");
+    const m = html.match(reg);
+    if (m && m[1]) {
+        const n = parseInt(m[1], 10);
+        if (!isNaN(n)) return n;
+    }
+    return 0;
+}
+
 /**
  * Helper ekstraksi nilai field dari HTML Billingnesia berdasarkan label
  * Bekerja pada tabel, div kontainer, maupun layout inline
@@ -482,13 +603,20 @@ export function parseBillingnesiaHTML(
     const registerDate = extractFieldValue(htmlWithoutScripts, plainText, ["TGL DAFTAR", "TANGGAL DAFTAR"]);
     const idCardNumber = extractFieldValue(htmlWithoutScripts, plainText, ["NO KTP", "NOMOR KTP"]);
     
-    // No WA 1 & No WA 2
-    let phoneNumber = extractFieldValue(htmlWithoutScripts, plainText, ["NO WA 1", "WHATSAPP 1", "NO WA", "NO HP"]);
-    if (!phoneNumber) {
+    // No WA 1 & No WA 2 (Sesuai Aturan: Jika WA 1 ada gunakan WA 1, jika tidak ada gunakan WA 2, jika ada keduanya gunakan WA 1)
+    const rawPhone1 = extractFieldValue(htmlWithoutScripts, plainText, ["NO WA 1", "WHATSAPP 1", "NO WA", "NO HP"]);
+    const rawPhone2 = extractFieldValue(htmlWithoutScripts, plainText, ["NO WA 2 / TELP", "NO WA 2", "NO TELP", "TELEPON"]);
+    
+    const cleanP1 = cleanPhoneNumber(rawPhone1);
+    const cleanP2 = cleanPhoneNumber(rawPhone2);
+
+    let fallbackRegexPhone = "";
+    if (!cleanP1 && !cleanP2) {
         const phoneMatch = plainText.match(/\b(08\d{8,11}|628\d{8,11})\b/);
-        if (phoneMatch) phoneNumber = phoneMatch[0];
+        if (phoneMatch) fallbackRegexPhone = phoneMatch[0];
     }
-    const phoneNumber2 = extractFieldValue(htmlWithoutScripts, plainText, ["NO WA 2 / TELP", "NO WA 2", "NO TELP", "TELEPON"]);
+
+    const resolvedPhoneNumber = cleanP1 ? (rawPhone1 || cleanP1) : (cleanP2 ? (rawPhone2 || cleanP2) : fallbackRegexPhone);
 
     const email = extractFieldValue(htmlWithoutScripts, plainText, ["EMAIL"]);
     const region = extractFieldValue(htmlWithoutScripts, plainText, ["WILAYAH"]);
@@ -575,7 +703,157 @@ export function parseBillingnesiaHTML(
         }
     }
 
-    // 9. Ekstrak Koordinat Lat/Lng dari Google Maps Link
+    // 9. Ekstrak Tabel Lengkap Billingnesia (Layanan, Invoice, Tiket, ISOLIR, Log)
+    const allParsedTables = extractHtmlTables(rawHtml);
+    const services: CustomerServiceItem[] = [];
+    const invoices: CustomerInvoiceItem[] = [];
+    const tickets: CustomerTicketItem[] = [];
+    const isolirs: CustomerIsolirItem[] = [];
+    const logs: CustomerLogItem[] = [];
+
+    for (const table of allParsedTables) {
+        const headerStr = table.headers.join(" ");
+
+        // A. TABEL LAYANAN (Sesuai Gambar 2: NAMA LAYANAN, HARGA, SIKLUS, PENERBITAN, STATUS, AKSI)
+        if (
+            table.headers.some((h) => h.includes("LAYANAN")) &&
+            table.headers.some((h) => h.includes("HARGA") || h.includes("SIKLUS") || h.includes("PENERBITAN"))
+        ) {
+            const nameIdx = table.headers.findIndex((h) => h.includes("NAMA LAYANAN") || h.includes("LAYANAN"));
+            const priceIdx = table.headers.findIndex((h) => h.includes("HARGA") || h.includes("BIAYA"));
+            const cycleIdx = table.headers.findIndex((h) => h.includes("SIKLUS") || h.includes("PERIODE"));
+            const issueIdx = table.headers.findIndex((h) => h.includes("PENERBITAN") || h.includes("TERBIT"));
+            const statusIdx = table.headers.findIndex((h) => h.includes("STATUS"));
+
+            for (const row of table.rows) {
+                const sName = row[nameIdx !== -1 ? nameIdx : 0] || "";
+                if (!sName || sName.toUpperCase() === "NAMA LAYANAN" || sName === "-") continue;
+
+                services.push({
+                    name: sName,
+                    price: row[priceIdx !== -1 ? priceIdx : 1] || "-",
+                    cycle: row[cycleIdx !== -1 ? cycleIdx : 2] || "Setiap bulan",
+                    issue_period: row[issueIdx !== -1 ? issueIdx : 3] || "-",
+                    status: (row[statusIdx !== -1 ? statusIdx : 4] || "AKTIF").toUpperCase(),
+                });
+            }
+        }
+
+        // B. TABEL INVOICE (NO INVOICE, PERIODE, NOMINAL, JATUH TEMPO, STATUS, AKSI/BAYAR)
+        else if (
+            table.headers.some((h) => h.includes("INVOICE")) ||
+            (table.headers.some((h) => h.includes("PERIODE")) &&
+                table.headers.some((h) => h.includes("JATUH TEMPO") || h.includes("NOMINAL") || h.includes("TOTAL")))
+        ) {
+            const invIdx = table.headers.findIndex((h) => h.includes("INVOICE") || h.includes("#NO") || h.includes("NO."));
+            const periodIdx = table.headers.findIndex((h) => h.includes("PERIODE") || h.includes("BULAN"));
+            const amountIdx = table.headers.findIndex(
+                (h) => h.includes("NOMINAL") || h.includes("TOTAL") || h.includes("TAGIHAN") || h.includes("JUMLAH")
+            );
+            const dueIdx = table.headers.findIndex((h) => h.includes("JATUH TEMPO") || h.includes("TEMPO"));
+            const statusIdx = table.headers.findIndex((h) => h.includes("STATUS"));
+            const paidIdx = table.headers.findIndex((h) => h.includes("BAYAR") || h.includes("TGL BAYAR"));
+
+            for (const row of table.rows) {
+                const invNo = row[invIdx !== -1 ? invIdx : 0] || "";
+                if (!invNo || invNo.toUpperCase().includes("INVOICE") || invNo === "#NO") continue;
+
+                const invStatus = (row[statusIdx !== -1 ? statusIdx : 4] || "UNPAID").toUpperCase();
+                const invAmount = row[amountIdx !== -1 ? amountIdx : 2] || "-";
+
+                invoices.push({
+                    invoice_no: invNo,
+                    period: row[periodIdx !== -1 ? periodIdx : 1] || "-",
+                    amount: invAmount,
+                    due_date: row[dueIdx !== -1 ? dueIdx : 3] || "-",
+                    status: invStatus,
+                    paid_date: paidIdx !== -1 ? row[paidIdx] : undefined,
+                });
+            }
+        }
+
+        // C. TABEL TIKET (#ID, TGL DIBUAT, TINDAKAN TERAKHIR, %, STATUS, AKSI)
+        else if (
+            table.headers.some((h) => h.includes("TINDAKAN TERAKHIR") || h.includes("TGL DIBUAT")) ||
+            (table.headers.some((h) => h.includes("TIKET")) && table.headers.some((h) => h.includes("%") || h.includes("STATUS")))
+        ) {
+            const idIdx = table.headers.findIndex((h) => h.includes("#ID") || h.includes("ID TIKET") || h.includes("TIKET"));
+            const dateIdx = table.headers.findIndex((h) => h.includes("TGL DIBUAT") || h.includes("TANGGAL"));
+            const actionIdx = table.headers.findIndex(
+                (h) => h.includes("TINDAKAN TERAKHIR") || h.includes("KETERANGAN") || h.includes("KELUHAN")
+            );
+            const progIdx = table.headers.findIndex((h) => h.includes("%") || h.includes("PROGRESS"));
+            const statusIdx = table.headers.findIndex((h) => h.includes("STATUS") || h.includes("KATEGORI"));
+
+            for (const row of table.rows) {
+                const tId = row[idIdx !== -1 ? idIdx : 0] || "";
+                if (!tId || tId.toUpperCase().includes("TIKET") || tId === "#ID") continue;
+
+                tickets.push({
+                    ticket_id: tId,
+                    created_at: row[dateIdx !== -1 ? dateIdx : 1] || "-",
+                    last_action: row[actionIdx !== -1 ? actionIdx : 2] || "-",
+                    progress: row[progIdx !== -1 ? progIdx : 3] || "100%",
+                    status: row[statusIdx !== -1 ? statusIdx : 4] || "SELESAI",
+                });
+            }
+        }
+
+        // D. TABEL ISOLIR (TGL ISOLIR, TGL BUKA, KETERANGAN, STATUS)
+        else if (table.headers.some((h) => h.includes("ISOLIR") || h.includes("TGL ISOLIR"))) {
+            const dateIdx = table.headers.findIndex((h) => h.includes("TGL ISOLIR") || h.includes("ISOLIR") || h.includes("TANGGAL"));
+            const openIdx = table.headers.findIndex((h) => h.includes("BUKA") || h.includes("SELESAI"));
+            const reasonIdx = table.headers.findIndex((h) => h.includes("ALASAN") || h.includes("KETERANGAN"));
+            const statusIdx = table.headers.findIndex((h) => h.includes("STATUS"));
+
+            for (const row of table.rows) {
+                const isoDate = row[dateIdx !== -1 ? dateIdx : 0] || "";
+                if (!isoDate || isoDate.toUpperCase().includes("ISOLIR")) continue;
+
+                isolirs.push({
+                    isolated_date: isoDate,
+                    reopened_date: openIdx !== -1 ? row[openIdx] : "-",
+                    reason: reasonIdx !== -1 ? row[reasonIdx] : "-",
+                    status: statusIdx !== -1 ? row[statusIdx] : "TERISOLIR",
+                });
+            }
+        }
+
+        // E. TABEL LOG (TANGGAL/WAKTU, USER, AKTIVITAS)
+        else if (
+            table.headers.some((h) => h.includes("AKTIVITAS")) ||
+            (table.headers.some((h) => h.includes("LOG")) &&
+                table.headers.some((h) => h.includes("USER") || h.includes("WAKTU") || h.includes("TANGGAL")))
+        ) {
+            const dateIdx = table.headers.findIndex(
+                (h) => h.includes("TANGGAL") || h.includes("WAKTU") || h.includes("DATE") || h.includes("JAM")
+            );
+            const userIdx = table.headers.findIndex((h) => h.includes("USER") || h.includes("ADMIN") || h.includes("OPERATOR"));
+            const actIdx = table.headers.findIndex((h) => h.includes("AKTIVITAS") || h.includes("KETERANGAN") || h.includes("LOG"));
+
+            for (const row of table.rows) {
+                const d = row[dateIdx !== -1 ? dateIdx : 0] || "";
+                if (!d || d.toUpperCase().includes("TANGGAL")) continue;
+
+                logs.push({
+                    date: d,
+                    user: row[userIdx !== -1 ? userIdx : 1] || "-",
+                    activity: row[actIdx !== -1 ? actIdx : 2] || "-",
+                });
+            }
+        }
+    }
+
+    // Badge counts dari navigasi tab (Gambar 2: Layanan 2, Invoice 21, Tiket 5, ISOLIR 10, Log 10)
+    const tabCounts: CustomerTabCounts = {
+        services: services.length || extractBadgeCount(rawHtml, "Layanan"),
+        invoices: invoices.length || extractBadgeCount(rawHtml, "Invoice"),
+        tickets: tickets.length || extractBadgeCount(rawHtml, "Tiket"),
+        isolirs: isolirs.length || extractBadgeCount(rawHtml, "ISOLIR"),
+        logs: logs.length || extractBadgeCount(rawHtml, "Log"),
+    };
+
+    // 10. Ekstrak Koordinat Lat/Lng dari Google Maps Link
     let latitude = -7.8231; // Default fallback Kediri
     let longitude = 111.9174;
     let coordinatesFound = false;
@@ -602,7 +880,7 @@ export function parseBillingnesiaHTML(
         }
     }
 
-    // 10. Ekstrak Tipe Perangkat ONT
+    // 11. Ekstrak Tipe Perangkat ONT
     let deviceType = "ONT ZTE F609";
     const ontMatch = plainText.match(/\b(ZTE\s+[A-Z0-9]+|HUAWEI\s+[A-Z0-9]+|FIBERHOME\s+[A-Z0-9]+)\b/i);
     if (ontMatch) {
@@ -620,8 +898,9 @@ export function parseBillingnesiaHTML(
         // Data Pribadi (Gambar 1)
         register_date: registerDate || undefined,
         id_card_number: idCardNumber || undefined,
-        phone_number: phoneNumber,
-        phone_number_2: phoneNumber2 || undefined,
+        phone_number: resolvedPhoneNumber,
+        phone_number_1: rawPhone1 || undefined,
+        phone_number_2: rawPhone2 || undefined,
         email: email || undefined,
         region: region || undefined,
         district: district || undefined,
@@ -651,6 +930,14 @@ export function parseBillingnesiaHTML(
         ticket_tag: ticketTag || undefined,
         ticket_attachment: ticketAttachment || undefined,
         ticket_progress_percent: ticketProgressPercent || undefined,
+
+        // Data Tab Lengkap Billingnesia
+        tab_counts: tabCounts,
+        services,
+        invoices,
+        tickets,
+        isolirs,
+        logs,
 
         // Teknis & Finansial
         latitude,
@@ -823,6 +1110,7 @@ export async function scrapeBillingnesiaData(
                     if (custData.register_date) data.register_date = custData.register_date;
                     if (custData.id_card_number) data.id_card_number = custData.id_card_number;
                     if (custData.phone_number) data.phone_number = custData.phone_number;
+                    if (custData.phone_number_1) data.phone_number_1 = custData.phone_number_1;
                     if (custData.phone_number_2) data.phone_number_2 = custData.phone_number_2;
                     if (custData.email) data.email = custData.email;
                     if (custData.region) data.region = custData.region;
@@ -842,6 +1130,14 @@ export async function scrapeBillingnesiaData(
                     if (custData.parent_odp) data.parent_odp = custData.parent_odp;
                     if (custData.cable_outdoor) data.cable_outdoor = custData.cable_outdoor;
                     if (custData.cable_indoor) data.cable_indoor = custData.cable_indoor;
+
+                    // Data Tab Lengkap (dari halaman detail pelanggan — bukan dari halaman tiket)
+                    if (custData.services && custData.services.length > 0) data.services = custData.services;
+                    if (custData.invoices && custData.invoices.length > 0) data.invoices = custData.invoices;
+                    if (custData.tickets && custData.tickets.length > 0) data.tickets = custData.tickets;
+                    if (custData.isolirs && custData.isolirs.length > 0) data.isolirs = custData.isolirs;
+                    if (custData.logs && custData.logs.length > 0) data.logs = custData.logs;
+                    if (custData.tab_counts) data.tab_counts = custData.tab_counts;
 
                     if (custData.coordinates_found) {
                         data.latitude = custData.latitude;

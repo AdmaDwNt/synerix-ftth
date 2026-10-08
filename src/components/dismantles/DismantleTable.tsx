@@ -1,8 +1,10 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import { DismantleTask } from "@/lib/types/dismantle";
 import { getGoogleMapsUrl } from "@/lib/ftth/distance";
+import { resolveDisplayPhone } from "@/lib/utils/phoneHelper";
 import {
     Eye,
     MapPin,
@@ -29,6 +31,8 @@ export default function DismantleTable({
     onDeleteTask,
     onOpenCustomerDetail,
 }: DismantleTableProps) {
+    const router = useRouter();
+
     if (tasks.length === 0) {
         return null;
     }
@@ -86,16 +90,29 @@ export default function DismantleTable({
                             // Link Sharelok Maps
                             const mapsUrl = getGoogleMapsUrl(task.latitude, task.longitude);
 
+                            // NO WA: Prioritas WA 1, fallback WA 2
+                            const displayPhone = resolveDisplayPhone(
+                                task.phone_number || metadata.phone_number_1,
+                                metadata.phone_number_2
+                            );
+
+                            // Navigasi ke halaman detail pelanggan (Full Page)
+                            const goToDetail = () => {
+                                if (task.customer_id) {
+                                    router.push(`/dismantles/${task.customer_id}`);
+                                }
+                            };
+
                             return (
                                 <tr
                                     key={task.id}
                                     className="hover:bg-teal-50/30 transition-colors group"
                                 >
-                                    {/* 1. #ID (Berupa link yang membuka detail pelanggan) */}
+                                    {/* 1. #ID (Link ke halaman detail pelanggan) */}
                                     <td className="py-3 px-3">
                                         <button
                                             type="button"
-                                            onClick={() => onOpenCustomerDetail(task)}
+                                            onClick={goToDetail}
                                             className="font-mono font-bold text-teal-700 hover:text-teal-900 hover:underline cursor-pointer flex items-center gap-1 group-hover:text-teal-800"
                                             title="Klik untuk membuka Detail Pelanggan"
                                         >
@@ -111,7 +128,7 @@ export default function DismantleTable({
                                     {/* 2. NAMA PELANGGAN */}
                                     <td className="py-3 px-3">
                                         <div
-                                            onClick={() => onOpenCustomerDetail(task)}
+                                            onClick={goToDetail}
                                             className="font-bold text-slate-900 hover:text-teal-700 cursor-pointer line-clamp-1"
                                             title={task.customer_name}
                                         >
@@ -129,18 +146,18 @@ export default function DismantleTable({
                                         </span>
                                     </td>
 
-                                    {/* 4. NO WA */}
+                                    {/* 4. NO WA (Prioritas WA 1 → Fallback WA 2) */}
                                     <td className="py-3 px-3">
-                                        {task.phone_number ? (
+                                        {displayPhone ? (
                                             <a
-                                                href={`https://wa.me/${task.phone_number.replace(/^0/, "62").replace(/\D/g, "")}`}
+                                                href={`https://wa.me/${displayPhone.replace(/^0/, "62").replace(/\D/g, "")}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="font-mono font-medium text-emerald-700 hover:underline inline-flex items-center gap-1"
                                                 title="Chat via WhatsApp"
                                             >
                                                 <Phone className="w-3 h-3 text-emerald-600" />
-                                                <span>{task.phone_number}</span>
+                                                <span>{displayPhone}</span>
                                             </a>
                                         ) : (
                                             <span className="text-slate-400 font-mono">-</span>
@@ -196,10 +213,10 @@ export default function DismantleTable({
                                     {/* 9. AKSI (Ikon Mata + Ikon Lokasi Sharelok + Status + Hapus) */}
                                     <td className="py-3 px-3 text-center">
                                         <div className="flex items-center justify-center gap-1">
-                                            {/* Ikon Mata: Buka Detail Pelanggan */}
+                                            {/* Ikon Mata: Buka Detail Pelanggan (Full Page) */}
                                             <button
                                                 type="button"
-                                                onClick={() => onOpenCustomerDetail(task)}
+                                                onClick={goToDetail}
                                                 title="Lihat Detail Pelanggan & Tiket"
                                                 className="p-1.5 rounded-lg text-teal-700 bg-teal-50 hover:bg-teal-100 transition-colors cursor-pointer"
                                             >

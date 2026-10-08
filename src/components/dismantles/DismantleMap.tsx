@@ -6,6 +6,7 @@ import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { DismantleTask, DismantleStatus } from "@/lib/types/dismantle";
 import { formatDistance, getGoogleMapsUrl, getWazeUrl } from "@/lib/ftth/distance";
+import { resolveDisplayPhone } from "@/lib/utils/phoneHelper";
 import {
     ExternalLink,
     Phone,
@@ -220,19 +221,23 @@ export default function DismantleMap({
                                     </div>
 
                                     {/* 4. No WA */}
-                                    {task.phone_number && (
-                                        <div className="mt-1.5 text-[11px]">
-                                            <a
-                                                href={`https://wa.me/${task.phone_number.replace(/^0/, "62").replace(/\D/g, "")}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-emerald-700 hover:underline flex items-center gap-1 font-semibold"
-                                            >
-                                                <Phone className="h-3 w-3 text-emerald-600" />
-                                                <span>WhatsApp: {task.phone_number}</span>
-                                            </a>
-                                        </div>
-                                    )}
+                                    {(() => {
+                                        const displayPhone = resolveDisplayPhone(task.phone_number || metadata.phone_number_1, metadata.phone_number_2);
+                                        if (!displayPhone) return null;
+                                        return (
+                                            <div className="mt-1.5 text-[11px]">
+                                                <a
+                                                    href={`https://wa.me/${displayPhone.replace(/^0/, "62").replace(/\D/g, "")}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-emerald-700 hover:underline flex items-center gap-1 font-semibold"
+                                                >
+                                                    <Phone className="h-3 w-3 text-emerald-600" />
+                                                    <span>WhatsApp: {displayPhone}</span>
+                                                </a>
+                                            </div>
+                                        );
+                                    })()}
 
                                     {/* 5. DAFTAR DISMANTLE & PENANDA PROGRES (Poin 34-35) */}
                                     <div className="mt-2.5 pt-2 border-t border-slate-200 space-y-1.5">

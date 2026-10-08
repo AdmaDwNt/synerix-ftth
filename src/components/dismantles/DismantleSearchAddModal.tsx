@@ -122,10 +122,11 @@ export default function DismantleSearchAddModal({
             else if (scraped.district) clusterName = scraped.district;
             else if (scraped.server) clusterName = scraped.server;
 
-            // Simpan snapshot data lengkap ke accessories / failure_reason agar modal detail bisa baca full data
+            // Simpan snapshot data lengkap ke accessories agar halaman detail dan tabel bisa baca full data
             const metadataSnapshot = JSON.stringify({
                 register_date: scraped.register_date,
                 id_card_number: scraped.id_card_number,
+                phone_number_1: scraped.phone_number_1 || scraped.phone_number,
                 phone_number_2: scraped.phone_number_2,
                 email: scraped.email,
                 region: scraped.region,
@@ -149,6 +150,12 @@ export default function DismantleSearchAddModal({
                 ticket_pic: scraped.ticket_pic,
                 ticket_tag: scraped.ticket_tag,
                 ticket_progress_percent: scraped.ticket_progress_percent,
+                services: scraped.services || [],
+                invoices: scraped.invoices || [],
+                tickets: scraped.tickets || [],
+                isolirs: scraped.isolirs || [],
+                logs: scraped.logs || [],
+                tab_counts: scraped.tab_counts || {},
                 // Daftar penanda dismantle apa saja yang diambil (ONT, Kabel, Tagihan)
                 dismantle_items: {
                     ont_taken: false,

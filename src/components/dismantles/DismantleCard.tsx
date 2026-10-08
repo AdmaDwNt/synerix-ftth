@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { DismantleTask } from "@/lib/types/dismantle";
 import { formatDistance, getGoogleMapsUrl, getWazeUrl } from "@/lib/ftth/distance";
+import { resolveDisplayPhone } from "@/lib/utils/phoneHelper";
 import {
     MoreVertical,
     Pencil,
@@ -35,8 +37,25 @@ export default function DismantleCard({
     onDeleteTask,
     onOpenCustomerDetail,
 }: DismantleCardProps) {
+    const router = useRouter();
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+
+    // Ekstrak metadata untuk fallback nomor WA
+    let metadata: any = {};
+    const metaStr = task.accessories?.find((a: string) => a.startsWith("METADATA:"));
+    if (metaStr) {
+        try { metadata = JSON.parse(metaStr.replace("METADATA:", "")); } catch { metadata = {}; }
+    }
+    const displayPhone = resolveDisplayPhone(
+        task.phone_number || metadata.phone_number_1,
+        metadata.phone_number_2
+    );
+
+    // Navigasi ke halaman detail pelanggan (Full Page)
+    const goToDetail = () => {
+        if (task.customer_id) router.push(`/dismantles/${task.customer_id}`);
+    };
 
     // Tutup menu dropdown saat klik di luar
     useEffect(() => {
@@ -97,7 +116,7 @@ export default function DismantleCard({
                         <span className={`text-base leading-none ${dotColorClass}`}>●</span>
                         <button
                             type="button"
-                            onClick={() => onOpenCustomerDetail?.(task)}
+                            onClick={goToDetail}
                             className="font-bold text-xs sm:text-sm text-teal-800 hover:text-teal-950 hover:underline tracking-tight font-mono cursor-pointer"
                             title="Buka Detail Pelanggan"
                         >
@@ -153,7 +172,7 @@ export default function DismantleCard({
 
                 {/* Row 2: Title (Customer Name) */}
                 <h3
-                    onClick={() => onOpenCustomerDetail?.(task)}
+                    onClick={goToDetail}
                     className="font-extrabold text-sm sm:text-base text-slate-900 mt-2 tracking-tight uppercase leading-snug cursor-pointer hover:text-teal-700 transition-colors"
                     title="Buka Detail Pelanggan"
                 >
@@ -320,9 +339,9 @@ export default function DismantleCard({
                             </a>
 
                             {/* Hubungi Pelanggan WA */}
-                            {task.phone_number && (
+                            {displayPhone && (
                                 <a
-                                    href={`https://wa.me/${task.phone_number.replace(/^0/, "62").replace(/\D/g, "")}`}
+                                    href={`https://wa.me/${displayPhone.replace(/^0/, "62").replace(/\D/g, "")}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={() => setMenuOpen(false)}
