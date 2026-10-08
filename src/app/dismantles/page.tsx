@@ -11,7 +11,8 @@ import DataTablePagination from "@/components/layout/DataTablePagination";
 import SummaryMetricsStrip, { MetricItem } from "@/components/layout/SummaryMetricsStrip";
 import DismantleClusterFilter from "@/components/dismantles/DismantleClusterFilter";
 import DismantleStatusModal from "@/components/dismantles/DismantleStatusModal";
-import AddDismantleModal from "@/components/dismantles/AddDismantleModal";
+import DismantleSearchAddModal from "@/components/dismantles/DismantleSearchAddModal";
+import CustomerDetailModal, { ScrapedCustomerData } from "@/components/dismantles/CustomerDetailModal";
 import EditDismantleModal from "@/components/dismantles/EditDismantleModal";
 import ImportDismantleModal from "@/components/dismantles/ImportDismantleModal";
 import InstallBookmarkletModal from "@/components/dismantles/InstallBookmarkletModal";
@@ -88,6 +89,65 @@ export default function DismantlesPage() {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isBookmarkletModalOpen, setIsBookmarkletModalOpen] = useState(false);
+
+    // Modal Detail Pelanggan Full (Sesuai Poin 6-8)
+    const [selectedCustomerForDetail, setSelectedCustomerForDetail] = useState<ScrapedCustomerData | null>(null);
+    const [isCustomerDetailOpen, setIsCustomerDetailOpen] = useState(false);
+
+    const handleOpenCustomerDetail = (task: DismantleTask) => {
+        let metadata: any = {};
+        const metaStr = task.accessories?.find((a) => a.startsWith("METADATA:"));
+        if (metaStr) {
+            try {
+                metadata = JSON.parse(metaStr.replace("METADATA:", ""));
+            } catch (e) {
+                metadata = {};
+            }
+        }
+
+        const customerData: ScrapedCustomerData = {
+            customer_id: task.customer_id,
+            customer_name: task.customer_name,
+            status_pelanggan: metadata.status_pelanggan || (task.status === "COMPLETED" ? "SELESAI CABUT" : "PELANGGAN AKTIF"),
+            badges: metadata.badges || ["ITN ON", "PJK OFF", "PELANGGAN AKTIF"],
+            register_date: metadata.register_date || (task.created_at ? new Date(task.created_at).toISOString().split("T")[0] : "-"),
+            id_card_number: metadata.id_card_number || "-",
+            phone_number: task.phone_number || "-",
+            phone_number_2: metadata.phone_number_2 || "-",
+            email: metadata.email || "-",
+            region: metadata.region || "Kabupaten Kediri",
+            district: metadata.district || "-",
+            village: metadata.village || task.cluster_name || "-",
+            hamlet: metadata.hamlet || "-",
+            address: task.address,
+            marketer: metadata.marketer || "ASTERIX",
+            registration_note: metadata.registration_note || "-",
+            commitment: metadata.commitment || "-",
+            server: metadata.server || task.cluster_name,
+            ip_address: metadata.ip_address || "192.168.1.1",
+            pppoe_username: metadata.pppoe_username || task.customer_id,
+            pppoe_password: metadata.pppoe_password || "******",
+            parent_odp: task.parent_odp_name || metadata.parent_odp || "-",
+            cable_outdoor: metadata.cable_outdoor || "25 m",
+            cable_indoor: metadata.cable_indoor || "7 m",
+            ticket_id: task.ticket_id || undefined,
+            ticket_creator: metadata.ticket_creator || "Teknisi Lapangan",
+            ticket_type: metadata.ticket_type || "TEKNIS",
+            category: metadata.category || "MAINTENANCE RETAIL",
+            ticket_indication: metadata.ticket_indication || (task.unpaid_amount ? `Dismantle total Tagihan tertunggak Rp ${task.unpaid_amount.toLocaleString("id-ID")}` : "Dismantle total"),
+            ticket_pic: metadata.ticket_pic || task.technician_name || "Teknisi Lapangan",
+            ticket_tag: metadata.ticket_tag || "-",
+            ticket_progress_percent: metadata.ticket_progress_percent || "100%",
+            latitude: task.latitude,
+            longitude: task.longitude,
+            unpaid_amount: task.unpaid_amount || 0,
+            device_type: task.device_type,
+            billing_url: task.billing_url || undefined,
+        };
+
+        setSelectedCustomerForDetail(customerData);
+        setIsCustomerDetailOpen(true);
+    };
 
     // Floating Toast Notifications state (non-blocking)
     const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -693,6 +753,7 @@ export default function DismantlesPage() {
                                                 onOpenStatusModal={(t) => setActiveTaskForModal(t)}
                                                 onOpenEditModal={(t) => setActiveTaskForEdit(t)}
                                                 onDeleteTask={handleDirectDelete}
+                                                onOpenCustomerDetail={handleOpenCustomerDetail}
                                             />
                                         </div>
 
@@ -706,6 +767,7 @@ export default function DismantlesPage() {
                                                         onOpenStatusModal={(t) => setActiveTaskForModal(t)}
                                                         onOpenEditModal={(t) => setActiveTaskForEdit(t)}
                                                         onDeleteTask={handleDirectDelete}
+                                                        onOpenCustomerDetail={handleOpenCustomerDetail}
                                                     />
                                                 ))}
                                             </div>
@@ -753,6 +815,7 @@ export default function DismantlesPage() {
                         <DismantleMap
                             tasks={processedTasks}
                             onOpenStatusModal={(t: DismantleTask) => setActiveTaskForModal(t)}
+                            onOpenCustomerDetail={handleOpenCustomerDetail}
                             userLocation={userLocation}
                         />
                     </div>
@@ -768,11 +831,18 @@ export default function DismantlesPage() {
                 )}
             </div>
 
-            {/* Modal Tambah Tugas Manual */}
-            <AddDismantleModal
+            {/* Modal Pencarian & Penambahan Tugas Dismantle (Sesuai Poin 1-5 di pengembangan.md) */}
+            <DismantleSearchAddModal
                 isOpen={isAddModalOpen}
                 onClose={() => setIsAddModalOpen(false)}
                 onSuccess={handleAddSuccess}
+            />
+
+            {/* Modal Detail Pelanggan Full (Sesuai Poin 6-8 di pengembangan.md) */}
+            <CustomerDetailModal
+                isOpen={isCustomerDetailOpen}
+                onClose={() => setIsCustomerDetailOpen(false)}
+                customer={selectedCustomerForDetail}
             />
 
             {/* Modal Edit Tugas */}

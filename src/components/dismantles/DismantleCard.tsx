@@ -25,6 +25,7 @@ interface DismantleCardProps {
     onOpenStatusModal: (task: DismantleTask) => void;
     onOpenEditModal: (task: DismantleTask) => void;
     onDeleteTask: (task: DismantleTask) => void;
+    onOpenCustomerDetail?: (task: DismantleTask) => void;
 }
 
 export default function DismantleCard({
@@ -32,6 +33,7 @@ export default function DismantleCard({
     onOpenStatusModal,
     onOpenEditModal,
     onDeleteTask,
+    onOpenCustomerDetail,
 }: DismantleCardProps) {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -93,9 +95,14 @@ export default function DismantleCard({
                 <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-1.5 flex-wrap">
                         <span className={`text-base leading-none ${dotColorClass}`}>●</span>
-                        <span className="font-bold text-xs sm:text-sm text-slate-800 tracking-tight font-mono">
-                            {task.customer_id}
-                        </span>
+                        <button
+                            type="button"
+                            onClick={() => onOpenCustomerDetail?.(task)}
+                            className="font-bold text-xs sm:text-sm text-teal-800 hover:text-teal-950 hover:underline tracking-tight font-mono cursor-pointer"
+                            title="Buka Detail Pelanggan"
+                        >
+                            #{task.customer_id}
+                        </button>
                         {task.ticket_id && (
                             <span
                                 className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-200/90 flex items-center gap-1"
@@ -145,7 +152,11 @@ export default function DismantleCard({
                 </div>
 
                 {/* Row 2: Title (Customer Name) */}
-                <h3 className="font-extrabold text-sm sm:text-base text-slate-900 mt-2 tracking-tight uppercase leading-snug">
+                <h3
+                    onClick={() => onOpenCustomerDetail?.(task)}
+                    className="font-extrabold text-sm sm:text-base text-slate-900 mt-2 tracking-tight uppercase leading-snug cursor-pointer hover:text-teal-700 transition-colors"
+                    title="Buka Detail Pelanggan"
+                >
                     {task.customer_name}
                 </h3>
 

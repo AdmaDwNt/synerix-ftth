@@ -4,30 +4,30 @@ import React from "react";
 import { DismantleTask } from "@/lib/types/dismantle";
 import { getGoogleMapsUrl } from "@/lib/ftth/distance";
 import {
-    Pencil,
+    Eye,
+    MapPin,
     Trash2,
     RefreshCw,
+    Phone,
     ExternalLink,
-    Receipt,
-    Zap,
-    AlertTriangle,
-    Ticket
+    Clock
 } from "lucide-react";
 
 interface DismantleTableProps {
     tasks: DismantleTask[];
     startIndex: number;
     onOpenStatusModal: (task: DismantleTask) => void;
-    onOpenEditModal: (task: DismantleTask) => void;
+    onOpenEditModal?: (task: DismantleTask) => void;
     onDeleteTask: (task: DismantleTask) => void;
+    onOpenCustomerDetail: (task: DismantleTask) => void;
 }
 
 export default function DismantleTable({
     tasks,
     startIndex,
     onOpenStatusModal,
-    onOpenEditModal,
     onDeleteTask,
+    onOpenCustomerDetail,
 }: DismantleTableProps) {
     if (tasks.length === 0) {
         return null;
@@ -35,259 +35,221 @@ export default function DismantleTable({
 
     return (
         <div className="w-full rounded-2xl border border-slate-200/80 bg-white shadow-2xs overflow-hidden">
-            <table className="w-full table-fixed text-left border-collapse text-xs">
-                <thead>
-                    <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
-                        <th className="py-2.5 px-1.5 text-center w-[3%]">NO</th>
-                        <th className="py-2.5 px-1.5 w-[10%]"># ID</th>
-                        <th className="py-2.5 px-1.5 w-[10%]">TGL PEMBUATAN</th>
-                        <th className="py-2.5 px-1 text-center w-[6%]">JENIS</th>
-                        <th className="py-2.5 px-1.5 w-[10%]">KATEGORI</th>
-                        <th className="py-2.5 px-1.5 w-[23%]">JUDUL</th>
-                        <th className="py-2.5 px-1.5 w-[10%]">PJ TERAKHIR</th>
-                        <th className="py-2.5 px-1.5 w-[16%]">TINDAKAN TERAKHIR</th>
-                        <th className="py-2.5 px-1 text-center w-[5%]">%</th>
-                        <th className="py-2.5 px-1 text-center w-[7%]">AKSI</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                    {tasks.map((task, idx) => {
-                        const rowNumber = startIndex + idx;
-                        const isCompleted = task.status === "COMPLETED";
-                        const isInProgress = task.status === "IN_PROGRESS";
-                        const isFailed = task.status === "FAILED";
+            <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                        {/* Header Tabel Sesuai Poin 6 di pengembangan.md */}
+                        <tr className="bg-slate-50/90 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
+                            <th className="py-3 px-3 w-[12%]">#ID</th>
+                            <th className="py-3 px-3 w-[18%]">NAMA PELANGGAN</th>
+                            <th className="py-3 px-3 w-[14%]">DESA / DUSUN</th>
+                            <th className="py-3 px-3 w-[12%]">NO WA</th>
+                            <th className="py-3 px-3 w-[12%]">TGL DAFTAR</th>
+                            <th className="py-3 px-2 text-center w-[10%]">STATUS</th>
+                            <th className="py-3 px-2 text-center w-[6%]">ITN</th>
+                            <th className="py-3 px-2 text-center w-[6%]">PJK</th>
+                            <th className="py-3 px-3 text-center w-[10%]">AKSI</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-sans">
+                        {tasks.map((task, idx) => {
+                            // Ekstrak metadata scraping jika tersimpan di accessories
+                            let metadata: any = {};
+                            const metaStr = task.accessories?.find((a) => a.startsWith("METADATA:"));
+                            if (metaStr) {
+                                try {
+                                    metadata = JSON.parse(metaStr.replace("METADATA:", ""));
+                                } catch (e) {
+                                    metadata = {};
+                                }
+                            }
 
-                        // Status dot color
-                        const dotColor = isCompleted
-                            ? "text-emerald-500"
-                            : isInProgress
-                            ? "text-blue-500"
-                            : isFailed
-                            ? "text-rose-500"
-                            : "text-amber-500";
+                            // Tgl Daftar
+                            const tglDaftar = metadata.register_date || (task.created_at
+                                ? new Date(task.created_at).toISOString().split("T")[0]
+                                : "-");
 
-                        // Percentage progress
-                        const percentProgress = isCompleted
-                            ? { label: "100%", color: "text-emerald-700 bg-emerald-50 border-emerald-200" }
-                            : isInProgress
-                            ? { label: "50%", color: "text-blue-700 bg-blue-50 border-blue-200" }
-                            : isFailed
-                            ? { label: "0%", color: "text-rose-700 bg-rose-50 border-rose-200" }
-                            : { label: "0%", color: "text-amber-700 bg-amber-50 border-amber-200" };
+                            // Desa / Dusun
+                            const desaDusun = [
+                                metadata.village || task.cluster_name,
+                                metadata.hamlet,
+                            ].filter(Boolean).join(" - ") || task.cluster_name || "-";
 
-                        // Format created_at date and time
-                        const createdDate = task.created_at
-                            ? new Date(task.created_at).toISOString().replace("T", " ").slice(0, 19)
-                            : "-";
+                            // Badges ITN & PJK
+                            const badges: string[] = metadata.badges || [];
+                            const isItnOn = badges.some((b) => b.toUpperCase().includes("ITN ON"));
+                            const isPjkOn = badges.some((b) => b.toUpperCase().includes("PJK ON"));
 
-                        // Tindakan terakhir
-                        const actionTime = task.completed_at
-                            ? new Date(task.completed_at).toISOString().replace("T", " ").slice(0, 19)
-                            : createdDate;
-                        const actionPj = task.technician_name || "Teknisi Lapangan";
+                            // Status Pelanggan
+                            const custStatus = metadata.status_pelanggan || (task.status === "COMPLETED" ? "SELESAI CABUT" : "PELANGGAN AKTIF");
 
-                        let actionSummary = "Menunggu teknisi lapangan menuju lokasi pelanggan";
-                        if (isCompleted) {
-                            actionSummary = `Penarikan selesai (${task.device_type || "ONT"} - SN: ${
-                                task.serial_number || "N/A"
-                            })`;
-                        } else if (isInProgress) {
-                            actionSummary = "Teknisi sedang dalam perjalanan / proses penarikan di lokasi";
-                        } else if (isFailed) {
-                            actionSummary = `Gagal: ${task.failure_reason || "Rumah tutup / ditolak"}`;
-                        }
+                            // Link Sharelok Maps
+                            const mapsUrl = getGoogleMapsUrl(task.latitude, task.longitude);
 
-                        // Google Maps URL
-                        const mapsUrl =
-                            task.latitude && task.longitude
-                                ? getGoogleMapsUrl(task.latitude, task.longitude)
-                                : null;
-
-                        return (
-                            <tr
-                                key={task.id}
-                                className="hover:bg-teal-50/20 transition-colors group"
-                            >
-                                {/* 1. NO */}
-                                <td className="py-2.5 px-1.5 text-center text-slate-500 font-semibold overflow-hidden truncate">
-                                    {rowNumber}
-                                </td>
-
-                                {/* 2. # ID */}
-                                <td className="py-2.5 px-1.5 overflow-hidden">
-                                    <div className="flex items-center gap-1 min-w-0" title={task.customer_id}>
-                                        <span className={`text-base leading-none shrink-0 ${dotColor}`}>●</span>
-                                        <span className="font-mono font-bold text-slate-800 tracking-tight text-xs truncate">
-                                            {task.customer_id}
-                                        </span>
-                                        {task.auto_ingested && (
-                                            <span
-                                                className="px-1 py-0.2 rounded text-[8px] font-black uppercase bg-cyan-50 text-cyan-800 border border-cyan-200 shrink-0"
-                                                title="Auto-Ingest via Bookmarklet HP"
-                                            >
-                                                ⚡
+                            return (
+                                <tr
+                                    key={task.id}
+                                    className="hover:bg-teal-50/30 transition-colors group"
+                                >
+                                    {/* 1. #ID (Berupa link yang membuka detail pelanggan) */}
+                                    <td className="py-3 px-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => onOpenCustomerDetail(task)}
+                                            className="font-mono font-bold text-teal-700 hover:text-teal-900 hover:underline cursor-pointer flex items-center gap-1 group-hover:text-teal-800"
+                                            title="Klik untuk membuka Detail Pelanggan"
+                                        >
+                                            <span>#{task.customer_id}</span>
+                                        </button>
+                                        {task.ticket_id && (
+                                            <span className="font-mono text-[10px] text-amber-800 bg-amber-50 px-1 rounded block mt-0.5 w-fit">
+                                                {task.ticket_id}
                                             </span>
                                         )}
-                                    </div>
-                                    {task.ticket_id && (
+                                    </td>
+
+                                    {/* 2. NAMA PELANGGAN */}
+                                    <td className="py-3 px-3">
                                         <div
-                                            className="text-[10px] text-amber-900 font-mono font-bold truncate pl-3 flex items-center gap-0.5"
-                                            title={`Tiket: ${task.ticket_id}`}
+                                            onClick={() => onOpenCustomerDetail(task)}
+                                            className="font-bold text-slate-900 hover:text-teal-700 cursor-pointer line-clamp-1"
+                                            title={task.customer_name}
                                         >
-                                            <Ticket className="w-2.5 h-2.5 text-amber-700 shrink-0" />
-                                            <span>{task.ticket_id}</span>
+                                            {task.customer_name}
                                         </div>
-                                    )}
-                                    {task.parent_odp_name && (
-                                        <div
-                                            className="text-[10px] text-slate-500 font-mono truncate pl-3"
-                                            title={`ODP: ${task.parent_odp_name}`}
+                                        <span className="text-[10px] text-slate-400 line-clamp-1 block">
+                                            {task.address}
+                                        </span>
+                                    </td>
+
+                                    {/* 3. DESA / DUSUN */}
+                                    <td className="py-3 px-3 text-slate-700 font-medium">
+                                        <span className="line-clamp-1" title={desaDusun}>
+                                            {desaDusun}
+                                        </span>
+                                    </td>
+
+                                    {/* 4. NO WA */}
+                                    <td className="py-3 px-3">
+                                        {task.phone_number ? (
+                                            <a
+                                                href={`https://wa.me/${task.phone_number.replace(/^0/, "62").replace(/\D/g, "")}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="font-mono font-medium text-emerald-700 hover:underline inline-flex items-center gap-1"
+                                                title="Chat via WhatsApp"
+                                            >
+                                                <Phone className="w-3 h-3 text-emerald-600" />
+                                                <span>{task.phone_number}</span>
+                                            </a>
+                                        ) : (
+                                            <span className="text-slate-400 font-mono">-</span>
+                                        )}
+                                    </td>
+
+                                    {/* 5. TGL DAFTAR */}
+                                    <td className="py-3 px-3 font-mono text-slate-600">
+                                        {tglDaftar}
+                                    </td>
+
+                                    {/* 6. STATUS */}
+                                    <td className="py-3 px-2 text-center">
+                                        <span
+                                            className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                                task.status === "COMPLETED"
+                                                    ? "bg-slate-100 text-slate-700 border border-slate-300"
+                                                    : custStatus.includes("AKTIF") && !custStatus.includes("TIDAK")
+                                                    ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                                    : "bg-rose-100 text-rose-800 border border-rose-300"
+                                            }`}
                                         >
-                                            ODP: {task.parent_odp_name}
-                                        </div>
-                                    )}
-                                </td>
+                                            {task.status === "COMPLETED" ? "DICABUT" : custStatus}
+                                        </span>
+                                    </td>
 
-                                {/* 3. TGL PEMBUATAN */}
-                                <td className="py-2.5 px-1.5 font-mono text-[11px] text-slate-600 overflow-hidden truncate" title={createdDate}>
-                                    {createdDate}
-                                </td>
-
-                                {/* 4. JENIS */}
-                                <td className="py-2.5 px-1 text-center overflow-hidden">
-                                    <span className="inline-block px-1 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-teal-50 text-teal-800 border border-teal-200">
-                                        DISMANTLE
-                                    </span>
-                                </td>
-
-                                {/* 5. KATEGORI */}
-                                <td className="py-2.5 px-1.5 overflow-hidden truncate" title={task.cluster_name || "CLUSTER UMUM"}>
-                                    <span className="font-bold text-slate-700 uppercase tracking-tight text-[11px]">
-                                        {task.cluster_name || "CLUSTER UMUM"}
-                                    </span>
-                                </td>
-
-                                {/* 6. JUDUL */}
-                                <td className="py-2.5 px-1.5 overflow-hidden">
-                                    <div
-                                        className="font-bold text-slate-800 truncate flex items-center gap-1.5"
-                                        title={`PENARIKAN PERANGKAT ${task.device_type ? `(${task.device_type})` : ""}`}
-                                    >
-                                        <span className="truncate">PENARIKAN {task.device_type ? `(${task.device_type})` : ""}</span>
-                                    </div>
-                                    <div
-                                        className="text-teal-700 font-medium text-[11px] truncate"
-                                        title={`${task.customer_name} — ${task.address}`}
-                                    >
-                                        {task.customer_name} —{" "}
-                                        <span className="text-slate-500">{task.address}</span>
-                                    </div>
-                                    {task.unpaid_amount !== undefined && Number(task.unpaid_amount) > 0 && (
-                                        <div className="mt-1 flex items-center gap-1">
-                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200">
-                                                <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
-                                                Tunggakan: Rp {Number(task.unpaid_amount).toLocaleString("id-ID")}
-                                            </span>
-                                        </div>
-                                    )}
-                                </td>
-
-                                {/* 7. PJ TERAKHIR */}
-                                <td
-                                    className="py-2.5 px-1.5 font-medium text-slate-700 overflow-hidden truncate"
-                                    title={task.technician_name || "Belum Ditugaskan"}
-                                >
-                                    {task.technician_name || "Belum Ditugaskan"}
-                                </td>
-
-                                {/* 8. TINDAKAN TERAKHIR */}
-                                <td className="py-2.5 px-1.5 text-[11px] overflow-hidden">
-                                    <div
-                                        className="text-emerald-700 font-semibold font-mono truncate"
-                                        title={`${actionTime} [${actionPj}]`}
-                                    >
-                                        {actionTime.slice(5, 16)}{" "}
-                                        <span className="text-slate-700 font-sans font-bold">[{actionPj}]</span>
-                                    </div>
-                                    <div className="text-slate-600 truncate" title={actionSummary}>
-                                        {actionSummary}
-                                    </div>
-                                </td>
-
-                                {/* 9. % */}
-                                <td className="py-2.5 px-1 text-center overflow-hidden">
-                                    <span
-                                        className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-black border font-mono ${percentProgress.color}`}
-                                    >
-                                        {percentProgress.label}
-                                    </span>
-                                </td>
-
-                                {/* 10. AKSI */}
-                                <td className="py-2.5 px-1 text-center overflow-hidden">
-                                    <div className="flex items-center justify-center gap-0.5">
-                                        {/* Status Update Modal */}
-                                        <button
-                                            type="button"
-                                            onClick={() => onOpenStatusModal(task)}
-                                            className="p-1 rounded text-slate-500 hover:text-teal-700 hover:bg-teal-50 transition-colors shrink-0"
-                                            title="Update Status / Detail Penarikan"
+                                    {/* 7. ITN */}
+                                    <td className="py-3 px-2 text-center">
+                                        <span
+                                            className={`inline-block text-[9px] font-extrabold px-1.5 py-0.5 rounded ${
+                                                isItnOn
+                                                    ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                                    : "bg-slate-100 text-slate-500 border border-slate-200"
+                                            }`}
                                         >
-                                            <RefreshCw className="h-3.5 w-3.5" />
-                                        </button>
+                                            {isItnOn ? "ON" : "OFF"}
+                                        </span>
+                                    </td>
 
-                                        {/* Edit Ticket Modal */}
-                                        <button
-                                            type="button"
-                                            onClick={() => onOpenEditModal(task)}
-                                            className="p-1 rounded text-slate-500 hover:text-blue-700 hover:bg-blue-50 transition-colors shrink-0"
-                                            title="Edit Data Tugas"
+                                    {/* 8. PJK */}
+                                    <td className="py-3 px-2 text-center">
+                                        <span
+                                            className={`inline-block text-[9px] font-extrabold px-1.5 py-0.5 rounded ${
+                                                isPjkOn
+                                                    ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                                    : "bg-rose-100 text-rose-800 border border-rose-200"
+                                            }`}
                                         >
-                                            <Pencil className="h-3.5 w-3.5" />
-                                        </button>
+                                            {isPjkOn ? "ON" : "OFF"}
+                                        </span>
+                                    </td>
 
-                                        {/* Map Location */}
-                                        {mapsUrl && (
+                                    {/* 9. AKSI (Ikon Mata + Ikon Lokasi Sharelok + Status + Hapus) */}
+                                    <td className="py-3 px-3 text-center">
+                                        <div className="flex items-center justify-center gap-1">
+                                            {/* Ikon Mata: Buka Detail Pelanggan */}
+                                            <button
+                                                type="button"
+                                                onClick={() => onOpenCustomerDetail(task)}
+                                                title="Lihat Detail Pelanggan & Tiket"
+                                                className="p-1.5 rounded-lg text-teal-700 bg-teal-50 hover:bg-teal-100 transition-colors cursor-pointer"
+                                            >
+                                                <Eye className="w-3.5 h-3.5" />
+                                            </button>
+
+                                            {/* Ikon Lokasi: Buka Sharelok Scraping Google Maps */}
                                             <a
                                                 href={mapsUrl}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="p-1 rounded text-slate-500 hover:text-amber-700 hover:bg-amber-50 transition-colors shrink-0"
-                                                title="Buka Navigasi Google Maps"
+                                                title="Buka Sharelok Lokasi di Google Maps"
+                                                className="p-1.5 rounded-lg text-sky-700 bg-sky-50 hover:bg-sky-100 transition-colors inline-flex items-center"
                                             >
-                                                <ExternalLink className="h-3.5 w-3.5" />
+                                                <MapPin className="w-3.5 h-3.5" />
                                             </a>
-                                        )}
 
-                                        {/* Billingnesia Link */}
-                                        {task.billing_url && (
-                                            <a
-                                                href={task.billing_url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="p-1 rounded text-slate-500 hover:text-indigo-700 hover:bg-indigo-50 transition-colors shrink-0"
-                                                title="Buka Halaman Tiket Billingnesia"
+                                            {/* Ikon Status Dismantle */}
+                                            <button
+                                                type="button"
+                                                onClick={() => onOpenStatusModal(task)}
+                                                title={`Ubah Status Tugas (Saat ini: ${task.status})`}
+                                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                                    task.status === "COMPLETED"
+                                                        ? "text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+                                                        : task.status === "IN_PROGRESS"
+                                                        ? "text-amber-700 bg-amber-50 hover:bg-amber-100"
+                                                        : "text-slate-600 bg-slate-100 hover:bg-slate-200"
+                                                }`}
                                             >
-                                                <Receipt className="h-3.5 w-3.5 text-indigo-600" />
-                                            </a>
-                                        )}
+                                                <RefreshCw className="w-3.5 h-3.5" />
+                                            </button>
 
-                                        {/* Delete Ticket */}
-                                        <button
-                                            type="button"
-                                            onClick={() => onDeleteTask(task)}
-                                            className="p-1 rounded text-slate-400 hover:text-rose-700 hover:bg-rose-50 transition-colors shrink-0"
-                                            title="Hapus Data Tugas"
-                                        >
-                                            <Trash2 className="h-3.5 w-3.5" />
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        );
-                    })}
-                </tbody>
-            </table>
+                                            {/* Ikon Hapus */}
+                                            <button
+                                                type="button"
+                                                onClick={() => onDeleteTask(task)}
+                                                title="Hapus Tugas Dismantle"
+                                                className="p-1.5 rounded-lg text-rose-600 bg-rose-50 hover:bg-rose-100 transition-colors cursor-pointer"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }
