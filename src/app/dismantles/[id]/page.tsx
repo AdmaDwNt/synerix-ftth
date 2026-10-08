@@ -282,53 +282,56 @@ export default function CustomerDetailPage() {
     ];
 
     return (
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-5 max-w-7xl mx-auto">
-            {/* Navigation */}
-            <div className="flex items-center gap-3">
-                <button
-                    onClick={() => router.push("/dismantles")}
-                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-3 py-2 rounded-xl transition-colors cursor-pointer"
-                >
-                    <ArrowLeft className="w-4 h-4" />
-                    <span>Kembali</span>
-                </button>
-                <div className="text-xs text-slate-400 font-medium">
-                    Dismantle / <span className="text-slate-700 font-bold">Detail Pelanggan</span>
+        <div className="w-full px-3 sm:px-6 lg:px-8 py-3.5 sm:py-6 space-y-3.5 sm:space-y-5 max-w-7xl mx-auto">
+            {/* Navigation & Live Sync Pill */}
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                    <button
+                        onClick={() => router.push("/dismantles")}
+                        className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-2.5 sm:px-3 py-2 rounded-xl transition-all active:scale-95 cursor-pointer shrink-0"
+                    >
+                        <ArrowLeft className="w-4 h-4" />
+                        <span>Kembali</span>
+                    </button>
+                    <div className="text-[11px] sm:text-xs text-slate-400 font-medium truncate">
+                        Dismantle / <span className="text-slate-700 font-bold">Detail Pelanggan</span>
+                    </div>
                 </div>
                 {scraping && (
-                    <div className="ml-auto inline-flex items-center gap-1.5 text-xs text-teal-700 bg-teal-50 px-3 py-1.5 rounded-lg animate-pulse">
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span className="font-medium">Menyinkronkan data Billingnesia...</span>
+                    <div className="inline-flex items-center gap-1.5 text-[10px] sm:text-xs text-teal-700 bg-teal-50 px-2.5 py-1.5 rounded-lg animate-pulse shrink-0">
+                        <RefreshCw className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" />
+                        <span className="font-medium hidden xs:inline">Sinkronisasi data...</span>
                     </div>
                 )}
             </div>
 
             {/* Header Card */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-                <div className="bg-gradient-to-r from-slate-50 to-teal-50/30 px-5 sm:px-6 py-5 border-b border-slate-100">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white flex items-center justify-center font-bold text-xl shadow-lg shadow-teal-200/50 shrink-0">
-                                <User className="w-7 h-7" />
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+                <div className="bg-gradient-to-r from-slate-50 to-teal-50/30 p-4 sm:p-6 border-b border-slate-100">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5">
+                        <div className="flex items-start sm:items-center gap-3 min-w-0">
+                            <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white flex items-center justify-center font-bold text-lg sm:text-xl shadow-md shadow-teal-200/50 shrink-0">
+                                <User className="w-5 h-5 sm:w-7 sm:h-7" />
                             </div>
-                            <div>
-                                <h1 className="font-extrabold text-lg sm:text-xl text-slate-900 leading-tight">
+                            <div className="min-w-0">
+                                <h1 className="font-extrabold text-base sm:text-xl text-slate-900 leading-tight break-words">
                                     {customer.customer_name}
                                 </h1>
-                                <p className="font-mono text-xs text-slate-500 font-semibold mt-0.5">
-                                    #{customer.customer_id}
+                                <div className="font-mono text-[11px] sm:text-xs text-slate-500 font-semibold mt-1 flex items-center flex-wrap gap-1.5">
+                                    <span>#{customer.customer_id}</span>
                                     {customer.ticket_id && (
-                                        <span className="ml-2 text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-[10px] font-bold border border-amber-200">
-                                            {customer.ticket_id}
+                                        <span className="text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded text-[10px] font-bold border border-amber-200">
+                                            🎫 {customer.ticket_id}
                                         </span>
                                     )}
-                                </p>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-1.5 flex-wrap">
+                        {/* Badges */}
+                        <div className="flex items-center gap-1.5 flex-wrap self-start sm:self-center">
                             <span
-                                className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                                className={`text-[10px] font-bold px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full ${
                                     isItnOn
                                         ? "bg-emerald-100 text-emerald-800 border border-emerald-300/70"
                                         : "bg-slate-100 text-slate-600 border border-slate-300/60"
@@ -337,7 +340,7 @@ export default function CustomerDetailPage() {
                                 ITN {isItnOn ? "ON" : "OFF"}
                             </span>
                             <span
-                                className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                                className={`text-[10px] font-bold px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full ${
                                     isPjkOn
                                         ? "bg-emerald-100 text-emerald-800 border border-emerald-300/70"
                                         : "bg-rose-100 text-rose-800 border border-rose-300/70"
@@ -346,7 +349,7 @@ export default function CustomerDetailPage() {
                                 PJK {isPjkOn ? "ON" : "OFF"}
                             </span>
                             <span
-                                className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                                className={`text-[10px] font-bold px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full ${
                                     isAktif
                                         ? "bg-emerald-100 text-emerald-800 border border-emerald-300/70"
                                         : "bg-slate-200 text-slate-700 border border-slate-300"
@@ -358,14 +361,17 @@ export default function CustomerDetailPage() {
                     </div>
                 </div>
 
-                {/* Tab Navigation */}
-                <div className="flex items-center gap-1 px-5 sm:px-6 py-2 overflow-x-auto text-xs font-semibold border-b border-slate-100 bg-white">
+                {/* Tab Navigation (Touch-friendly & Smooth horizontal scrolling for iOS/Android) */}
+                <div
+                    className="flex items-center gap-1 px-3 sm:px-6 py-2 overflow-x-auto text-xs font-semibold border-b border-slate-100 bg-white"
+                    style={{ WebkitOverflowScrolling: "touch" }}
+                >
                     {tabs.map((tab) => (
                         <button
                             key={tab.key}
                             type="button"
                             onClick={() => setActiveTab(tab.key)}
-                            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl whitespace-nowrap shrink-0 transition-all cursor-pointer active:scale-95 ${
                                 activeTab === tab.key
                                     ? "bg-teal-50 text-teal-800 border border-teal-300/80 font-bold shadow-xs"
                                     : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
@@ -389,19 +395,19 @@ export default function CustomerDetailPage() {
                 </div>
 
                 {/* Tab Content */}
-                <div className="p-5 sm:p-6">
+                <div className="p-3.5 sm:p-6">
                     {/* TAB: INFO PRIBADI */}
                     {activeTab === "info_pribadi" && (
-                        <div className="space-y-5 animate-in fade-in-50">
+                        <div className="space-y-4 sm:space-y-5 animate-in fade-in-50">
                             {/* Data Pribadi */}
-                            <div className="bg-slate-50/70 rounded-xl p-5 border border-slate-200/80">
-                                <div className="flex items-center gap-2 pb-2.5 mb-4 border-b border-slate-200">
-                                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                            <div className="bg-slate-50/70 rounded-xl p-4 sm:p-5 border border-slate-200/80">
+                                <div className="flex items-center gap-2 pb-2.5 mb-3.5 border-b border-slate-200">
+                                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
                                         <User className="w-4 h-4" />
                                     </div>
-                                    <h3 className="font-bold text-sm uppercase tracking-wider text-slate-800">Data Pribadi</h3>
+                                    <h3 className="font-bold text-xs sm:text-sm uppercase tracking-wider text-slate-800">Data Pribadi</h3>
                                 </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-4 gap-x-5 text-xs">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-3.5 gap-x-5 text-xs">
                                     <FieldItem label="#ID PELANGGAN" value={customer.customer_id} mono bold />
                                     <FieldItem label="TGL DAFTAR" value={customer.register_date} mono />
                                     <FieldItem label="STATUS" value={statusText} color={isAktif ? "emerald" : "rose"} bold />
@@ -414,10 +420,10 @@ export default function CustomerDetailPage() {
                                                 href={`https://wa.me/${customer.phone_number_1.replace(/^0/, "62").replace(/\D/g, "")}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="font-mono text-emerald-700 hover:underline flex items-center gap-1 font-semibold"
+                                                className="font-mono text-emerald-700 hover:underline inline-flex items-center gap-1 font-semibold py-0.5"
                                             >
-                                                <Phone className="w-3 h-3 text-emerald-600" />
-                                                {customer.phone_number_1}
+                                                <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                                                <span>{customer.phone_number_1}</span>
                                             </a>
                                         ) : (
                                             <span className="text-slate-400">-</span>
@@ -430,10 +436,10 @@ export default function CustomerDetailPage() {
                                                 href={`https://wa.me/${customer.phone_number_2.replace(/^0/, "62").replace(/\D/g, "")}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="font-mono text-sky-700 hover:underline flex items-center gap-1 font-semibold"
+                                                className="font-mono text-sky-700 hover:underline inline-flex items-center gap-1 font-semibold py-0.5"
                                             >
-                                                <Phone className="w-3 h-3 text-sky-600" />
-                                                {customer.phone_number_2}
+                                                <Phone className="w-3.5 h-3.5 text-sky-600" />
+                                                <span>{customer.phone_number_2}</span>
                                             </a>
                                         ) : (
                                             <span className="text-slate-400 font-mono">-</span>
@@ -446,17 +452,17 @@ export default function CustomerDetailPage() {
                                     <FieldItem label="DUSUN" value={customer.hamlet} />
                                     <div className="sm:col-span-2">
                                         <span className="text-[11px] font-semibold text-slate-500 block mb-0.5">ALAMAT LENGKAP</span>
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-medium text-slate-900">{customer.address}</span>
+                                        <div className="flex items-start gap-2">
+                                            <span className="font-medium text-slate-900 leading-relaxed">{customer.address}</span>
                                             {mapsUrl && (
                                                 <a
                                                     href={mapsUrl}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     title="Buka di Google Maps"
-                                                    className="text-teal-600 hover:text-teal-800 p-1 hover:bg-teal-50 rounded"
+                                                    className="text-teal-600 hover:text-teal-800 p-1 hover:bg-teal-50 rounded shrink-0"
                                                 >
-                                                    <MapPin className="w-3.5 h-3.5" />
+                                                    <MapPin className="w-4 h-4" />
                                                 </a>
                                             )}
                                         </div>
@@ -470,14 +476,14 @@ export default function CustomerDetailPage() {
                             </div>
 
                             {/* Data Instalasi */}
-                            <div className="bg-slate-50/70 rounded-xl p-5 border border-slate-200/80">
-                                <div className="flex items-center gap-2 pb-2.5 mb-4 border-b border-slate-200">
-                                    <div className="w-7 h-7 rounded-lg bg-sky-100 text-sky-800 flex items-center justify-center">
+                            <div className="bg-slate-50/70 rounded-xl p-4 sm:p-5 border border-slate-200/80">
+                                <div className="flex items-center gap-2 pb-2.5 mb-3.5 border-b border-slate-200">
+                                    <div className="w-7 h-7 rounded-lg bg-sky-100 text-sky-800 flex items-center justify-center shrink-0">
                                         <Server className="w-4 h-4" />
                                     </div>
-                                    <h3 className="font-bold text-sm uppercase tracking-wider text-slate-800">Data Instalasi</h3>
+                                    <h3 className="font-bold text-xs sm:text-sm uppercase tracking-wider text-slate-800">Data Instalasi</h3>
                                 </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-4 gap-x-5 text-xs">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-3.5 gap-x-5 text-xs">
                                     <FieldItem label="SERVER" value={customer.server} bold />
                                     <FieldItem label="IP ADDRESS" value={customer.ip_address} mono color="sky" />
                                     <FieldItem label="USERNAME PPPOE" value={customer.pppoe_username} mono />
@@ -502,32 +508,57 @@ export default function CustomerDetailPage() {
                         <div className="animate-in fade-in-50">
                             <TabTableHeader icon={<Server className="w-4 h-4 text-teal-600" />} title="Daftar Layanan Pelanggan" count={customer.services.length} />
                             {customer.services.length > 0 ? (
-                                <div className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-xs">
-                                    <table className="w-full text-left border-collapse text-xs">
-                                        <thead>
-                                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                                <th className="py-3 px-4">NAMA LAYANAN</th>
-                                                <th className="py-3 px-3">HARGA</th>
-                                                <th className="py-3 px-3">SIKLUS</th>
-                                                <th className="py-3 px-3">PENERBITAN</th>
-                                                <th className="py-3 px-3 text-center">STATUS</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {customer.services.map((s, i) => (
-                                                <tr key={i} className="hover:bg-slate-50/70 transition-colors">
-                                                    <td className="py-3 px-4 font-semibold text-slate-900">{s.name}</td>
-                                                    <td className="py-3 px-3 font-mono text-slate-800">{s.price}</td>
-                                                    <td className="py-3 px-3 text-slate-600">{s.cycle}</td>
-                                                    <td className="py-3 px-3 text-slate-600">{s.issue_period}</td>
-                                                    <td className="py-3 px-3 text-center">
-                                                        <StatusBadge status={s.status} />
-                                                    </td>
+                                <>
+                                    {/* Mobile Cards View (Android & iOS) */}
+                                    <div className="block sm:hidden space-y-2.5">
+                                        {customer.services.map((s, i) => (
+                                            <div key={i} className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-xs space-y-2">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <h4 className="font-bold text-slate-900 text-xs leading-snug">{s.name}</h4>
+                                                    <StatusBadge status={s.status} />
+                                                </div>
+                                                <div className="flex items-baseline justify-between pt-1 border-t border-slate-100">
+                                                    <div>
+                                                        <span className="text-[10px] text-slate-400 block font-semibold">HARGA</span>
+                                                        <span className="font-mono font-bold text-teal-800 text-sm">Rp {s.price}</span>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className="text-[10px] text-slate-400 block font-semibold">SIKLUS / TERBIT</span>
+                                                        <span className="text-slate-600 text-[11px]">{s.cycle} · {s.issue_period}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Desktop Table View */}
+                                    <div className="hidden sm:block rounded-xl border border-slate-200 overflow-x-auto bg-white shadow-xs">
+                                        <table className="w-full text-left border-collapse text-xs">
+                                            <thead>
+                                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                                    <th className="py-3 px-4">NAMA LAYANAN</th>
+                                                    <th className="py-3 px-3">HARGA</th>
+                                                    <th className="py-3 px-3">SIKLUS</th>
+                                                    <th className="py-3 px-3">PENERBITAN</th>
+                                                    <th className="py-3 px-3 text-center">STATUS</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {customer.services.map((s, i) => (
+                                                    <tr key={i} className="hover:bg-slate-50/70 transition-colors">
+                                                        <td className="py-3 px-4 font-semibold text-slate-900">{s.name}</td>
+                                                        <td className="py-3 px-3 font-mono text-slate-800">{s.price}</td>
+                                                        <td className="py-3 px-3 text-slate-600">{s.cycle}</td>
+                                                        <td className="py-3 px-3 text-slate-600">{s.issue_period}</td>
+                                                        <td className="py-3 px-3 text-center">
+                                                            <StatusBadge status={s.status} />
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
                             ) : (
                                 <EmptyTabState label="layanan" scraping={scraping} />
                             )}
@@ -536,12 +567,12 @@ export default function CustomerDetailPage() {
 
                     {/* TAB: INVOICE */}
                     {activeTab === "invoice" && (
-                        <div className="animate-in fade-in-50 space-y-4">
-                            {/* Summary card */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div className="bg-gradient-to-br from-white to-slate-50 p-4 rounded-xl border border-slate-200 shadow-xs">
+                        <div className="animate-in fade-in-50 space-y-3.5 sm:space-y-4">
+                            {/* Summary cards */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                                <div className="bg-gradient-to-br from-white to-slate-50 p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-xs">
                                     <span className="text-[11px] font-semibold text-slate-500 block">Total Tunggakan Aktif</span>
-                                    <span className="font-extrabold text-xl text-rose-600 font-mono block mt-1">
+                                    <span className="font-extrabold text-lg sm:text-xl text-rose-600 font-mono block mt-1">
                                         Rp {customer.unpaid_amount.toLocaleString("id-ID")}
                                     </span>
                                     <span
@@ -554,9 +585,9 @@ export default function CustomerDetailPage() {
                                         {customer.unpaid_amount > 0 ? "Ada Tunggakan" : "Lunas"}
                                     </span>
                                 </div>
-                                <div className="bg-gradient-to-br from-white to-slate-50 p-4 rounded-xl border border-slate-200 shadow-xs">
+                                <div className="bg-gradient-to-br from-white to-slate-50 p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-xs">
                                     <span className="text-[11px] font-semibold text-slate-500 block">Total Invoice Tercatat</span>
-                                    <span className="font-extrabold text-xl text-slate-800 font-mono block mt-1">
+                                    <span className="font-extrabold text-lg sm:text-xl text-slate-800 font-mono block mt-1">
                                         {customer.invoices.length}
                                     </span>
                                     <span className="text-[10px] text-slate-400 mt-1 block">
@@ -567,32 +598,62 @@ export default function CustomerDetailPage() {
 
                             <TabTableHeader icon={<Receipt className="w-4 h-4 text-rose-600" />} title="Riwayat Invoice" count={customer.invoices.length} />
                             {customer.invoices.length > 0 ? (
-                                <div className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-xs">
-                                    <table className="w-full text-left border-collapse text-xs">
-                                        <thead>
-                                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                                <th className="py-3 px-4">NO INVOICE</th>
-                                                <th className="py-3 px-3">PERIODE</th>
-                                                <th className="py-3 px-3">NOMINAL</th>
-                                                <th className="py-3 px-3">JATUH TEMPO</th>
-                                                <th className="py-3 px-3 text-center">STATUS</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {customer.invoices.map((inv, i) => (
-                                                <tr key={i} className="hover:bg-slate-50/70 transition-colors">
-                                                    <td className="py-3 px-4 font-mono font-semibold text-slate-800">{inv.invoice_no}</td>
-                                                    <td className="py-3 px-3 text-slate-700">{inv.period}</td>
-                                                    <td className="py-3 px-3 font-mono font-semibold text-slate-900">{inv.amount}</td>
-                                                    <td className="py-3 px-3 font-mono text-slate-600">{inv.due_date}</td>
-                                                    <td className="py-3 px-3 text-center">
-                                                        <StatusBadge status={inv.status} />
-                                                    </td>
+                                <>
+                                    {/* Mobile Cards View (Android & iOS) */}
+                                    <div className="block sm:hidden space-y-2.5">
+                                        {customer.invoices.map((inv, i) => (
+                                            <div key={i} className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-xs space-y-2">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="font-mono font-bold text-xs text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
+                                                        {inv.invoice_no}
+                                                    </span>
+                                                    <StatusBadge status={inv.status} />
+                                                </div>
+                                                <p className="text-xs text-slate-600 leading-snug font-medium line-clamp-2">
+                                                    {inv.period}
+                                                </p>
+                                                <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 text-xs">
+                                                    <div>
+                                                        <span className="text-[10px] text-slate-400 block font-semibold">TAGIHAN</span>
+                                                        <span className="font-mono font-extrabold text-slate-900 text-sm">{inv.amount}</span>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className="text-[10px] text-slate-400 block font-semibold">JATUH TEMPO</span>
+                                                        <span className="font-mono text-slate-600 text-[11px]">{inv.due_date}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Desktop Table View */}
+                                    <div className="hidden sm:block rounded-xl border border-slate-200 overflow-x-auto bg-white shadow-xs">
+                                        <table className="w-full text-left border-collapse text-xs">
+                                            <thead>
+                                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                                    <th className="py-3 px-4">NO INVOICE</th>
+                                                    <th className="py-3 px-3">PERIODE / LAYANAN</th>
+                                                    <th className="py-3 px-3">NOMINAL</th>
+                                                    <th className="py-3 px-3">JATUH TEMPO</th>
+                                                    <th className="py-3 px-3 text-center">STATUS</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {customer.invoices.map((inv, i) => (
+                                                    <tr key={i} className="hover:bg-slate-50/70 transition-colors">
+                                                        <td className="py-3 px-4 font-mono font-semibold text-slate-800">{inv.invoice_no}</td>
+                                                        <td className="py-3 px-3 text-slate-700">{inv.period}</td>
+                                                        <td className="py-3 px-3 font-mono font-semibold text-slate-900">{inv.amount}</td>
+                                                        <td className="py-3 px-3 font-mono text-slate-600">{inv.due_date}</td>
+                                                        <td className="py-3 px-3 text-center">
+                                                            <StatusBadge status={inv.status} />
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
                             ) : (
                                 <EmptyTabState label="invoice" scraping={scraping} />
                             )}
@@ -604,38 +665,67 @@ export default function CustomerDetailPage() {
                         <div className="animate-in fade-in-50">
                             <TabTableHeader icon={<Ticket className="w-4 h-4 text-amber-600" />} title="Riwayat Tiket Pelanggan" count={customer.tickets.length} />
                             {customer.tickets.length > 0 ? (
-                                <div className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-xs">
-                                    <table className="w-full text-left border-collapse text-xs">
-                                        <thead>
-                                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                                <th className="py-3 px-4">#ID</th>
-                                                <th className="py-3 px-3">TGL DIBUAT</th>
-                                                <th className="py-3 px-3">TINDAKAN TERAKHIR</th>
-                                                <th className="py-3 px-2 text-center">%</th>
-                                                <th className="py-3 px-3 text-center">STATUS</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {customer.tickets.map((t, i) => (
-                                                <tr key={i} className="hover:bg-slate-50/70 transition-colors">
-                                                    <td className="py-3 px-4">
-                                                        <span className="font-mono font-bold text-teal-700">{t.ticket_id}</span>
-                                                    </td>
-                                                    <td className="py-3 px-3 font-mono text-slate-600">{t.created_at}</td>
-                                                    <td className="py-3 px-3 text-slate-800 font-medium">{t.last_action}</td>
-                                                    <td className="py-3 px-2 text-center">
-                                                        <span className="font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px]">
+                                <>
+                                    {/* Mobile Cards View (Android & iOS) */}
+                                    <div className="block sm:hidden space-y-2.5">
+                                        {customer.tickets.map((t, i) => (
+                                            <div key={i} className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-xs space-y-2">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="font-mono font-bold text-xs text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded">
+                                                        {t.ticket_id}
+                                                    </span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px]">
                                                             {t.progress}
                                                         </span>
-                                                    </td>
-                                                    <td className="py-3 px-3 text-center">
                                                         <StatusBadge status={t.status} />
-                                                    </td>
+                                                    </div>
+                                                </div>
+                                                <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 text-xs text-slate-700 leading-relaxed">
+                                                    <span className="text-[10px] font-semibold text-slate-400 block mb-0.5">TINDAKAN TERAKHIR:</span>
+                                                    {t.last_action}
+                                                </div>
+                                                <div className="text-[10px] font-mono text-slate-400 text-right">
+                                                    Dibuat: {t.created_at}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Desktop Table View */}
+                                    <div className="hidden sm:block rounded-xl border border-slate-200 overflow-x-auto bg-white shadow-xs">
+                                        <table className="w-full text-left border-collapse text-xs">
+                                            <thead>
+                                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                                    <th className="py-3 px-4">#ID</th>
+                                                    <th className="py-3 px-3">TGL DIBUAT</th>
+                                                    <th className="py-3 px-3">TINDAKAN TERAKHIR</th>
+                                                    <th className="py-3 px-2 text-center">%</th>
+                                                    <th className="py-3 px-3 text-center">STATUS</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {customer.tickets.map((t, i) => (
+                                                    <tr key={i} className="hover:bg-slate-50/70 transition-colors">
+                                                        <td className="py-3 px-4">
+                                                            <span className="font-mono font-bold text-teal-700">{t.ticket_id}</span>
+                                                        </td>
+                                                        <td className="py-3 px-3 font-mono text-slate-600">{t.created_at}</td>
+                                                        <td className="py-3 px-3 text-slate-800 font-medium">{t.last_action}</td>
+                                                        <td className="py-3 px-2 text-center">
+                                                            <span className="font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px]">
+                                                                {t.progress}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-3 px-3 text-center">
+                                                            <StatusBadge status={t.status} />
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
                             ) : (
                                 <EmptyTabState label="tiket" scraping={scraping} />
                             )}
@@ -647,30 +737,55 @@ export default function CustomerDetailPage() {
                         <div className="animate-in fade-in-50">
                             <TabTableHeader icon={<Shield className="w-4 h-4 text-rose-600" />} title="Riwayat Isolir Pelanggan" count={customer.isolirs.length} />
                             {customer.isolirs.length > 0 ? (
-                                <div className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-xs">
-                                    <table className="w-full text-left border-collapse text-xs">
-                                        <thead>
-                                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                                <th className="py-3 px-4">TGL ISOLIR</th>
-                                                <th className="py-3 px-3">TGL BUKA</th>
-                                                <th className="py-3 px-3">KETERANGAN</th>
-                                                <th className="py-3 px-3 text-center">STATUS</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {customer.isolirs.map((iso, i) => (
-                                                <tr key={i} className="hover:bg-slate-50/70 transition-colors">
-                                                    <td className="py-3 px-4 font-mono text-slate-800">{iso.isolated_date}</td>
-                                                    <td className="py-3 px-3 font-mono text-slate-600">{iso.reopened_date || "-"}</td>
-                                                    <td className="py-3 px-3 text-slate-700">{iso.reason || "-"}</td>
-                                                    <td className="py-3 px-3 text-center">
-                                                        <StatusBadge status={iso.status} />
-                                                    </td>
+                                <>
+                                    {/* Mobile Cards View (Android & iOS) */}
+                                    <div className="block sm:hidden space-y-2.5">
+                                        {customer.isolirs.map((iso, i) => (
+                                            <div key={i} className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-xs space-y-2">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="font-mono text-xs text-slate-800 font-bold">
+                                                        {iso.isolated_date}
+                                                    </span>
+                                                    <StatusBadge status={iso.status} />
+                                                </div>
+                                                <div className="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                                                    <span className="text-[10px] font-semibold text-slate-400 block mb-0.5">KETERANGAN / TINDAKAN:</span>
+                                                    {iso.reason || "-"}
+                                                </div>
+                                                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                                                    <span>Tgl Buka Kembali:</span>
+                                                    <span className="font-mono font-medium text-slate-700">{iso.reopened_date || "-"}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Desktop Table View */}
+                                    <div className="hidden sm:block rounded-xl border border-slate-200 overflow-x-auto bg-white shadow-xs">
+                                        <table className="w-full text-left border-collapse text-xs">
+                                            <thead>
+                                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                                    <th className="py-3 px-4">TGL ISOLIR</th>
+                                                    <th className="py-3 px-3">TGL BUKA</th>
+                                                    <th className="py-3 px-3">KETERANGAN</th>
+                                                    <th className="py-3 px-3 text-center">STATUS</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {customer.isolirs.map((iso, i) => (
+                                                    <tr key={i} className="hover:bg-slate-50/70 transition-colors">
+                                                        <td className="py-3 px-4 font-mono text-slate-800">{iso.isolated_date}</td>
+                                                        <td className="py-3 px-3 font-mono text-slate-600">{iso.reopened_date || "-"}</td>
+                                                        <td className="py-3 px-3 text-slate-700">{iso.reason || "-"}</td>
+                                                        <td className="py-3 px-3 text-center">
+                                                            <StatusBadge status={iso.status} />
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
                             ) : (
                                 <EmptyTabState label="isolir" scraping={scraping} />
                             )}
@@ -682,26 +797,44 @@ export default function CustomerDetailPage() {
                         <div className="animate-in fade-in-50">
                             <TabTableHeader icon={<Activity className="w-4 h-4 text-indigo-600" />} title="Log Aktivitas Pelanggan" count={customer.logs.length} />
                             {customer.logs.length > 0 ? (
-                                <div className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-xs">
-                                    <table className="w-full text-left border-collapse text-xs">
-                                        <thead>
-                                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                                <th className="py-3 px-4">TANGGAL</th>
-                                                <th className="py-3 px-3">USER</th>
-                                                <th className="py-3 px-3">AKTIVITAS</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {customer.logs.map((log, i) => (
-                                                <tr key={i} className="hover:bg-slate-50/70 transition-colors">
-                                                    <td className="py-3 px-4 font-mono text-slate-700 whitespace-nowrap">{log.date}</td>
-                                                    <td className="py-3 px-3 font-semibold text-slate-800">{log.user}</td>
-                                                    <td className="py-3 px-3 text-slate-700">{log.activity}</td>
+                                <>
+                                    {/* Mobile Cards View (Android & iOS) */}
+                                    <div className="block sm:hidden space-y-2">
+                                        {customer.logs.map((log, i) => (
+                                            <div key={i} className="p-3 bg-white rounded-xl border border-slate-200 shadow-xs space-y-1.5">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="font-mono text-[11px] text-slate-400">{log.date}</span>
+                                                    <span className="font-semibold text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">
+                                                        {log.user}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-slate-800 font-medium leading-relaxed">{log.activity}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Desktop Table View */}
+                                    <div className="hidden sm:block rounded-xl border border-slate-200 overflow-x-auto bg-white shadow-xs">
+                                        <table className="w-full text-left border-collapse text-xs">
+                                            <thead>
+                                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                                    <th className="py-3 px-4">TANGGAL</th>
+                                                    <th className="py-3 px-3">USER</th>
+                                                    <th className="py-3 px-3">AKTIVITAS</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {customer.logs.map((log, i) => (
+                                                    <tr key={i} className="hover:bg-slate-50/70 transition-colors">
+                                                        <td className="py-3 px-4 font-mono text-slate-700 whitespace-nowrap">{log.date}</td>
+                                                        <td className="py-3 px-3 font-semibold text-slate-800">{log.user}</td>
+                                                        <td className="py-3 px-3 text-slate-700">{log.activity}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
                             ) : (
                                 <EmptyTabState label="log aktivitas" scraping={scraping} />
                             )}
@@ -710,17 +843,17 @@ export default function CustomerDetailPage() {
                 </div>
             </div>
 
-            {/* Footer actions */}
-            <div className="flex items-center justify-between py-2">
+            {/* Footer actions (Responsive Pill Buttons for Touch Devices) */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-1 pb-3">
                 {mapsUrl ? (
                     <a
                         href={mapsUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-700 hover:underline"
+                        className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-teal-700 bg-teal-50/80 hover:bg-teal-100/80 sm:bg-transparent px-3 py-2.5 sm:py-1 rounded-xl transition-colors active:scale-95"
                     >
                         <MapPin className="w-4 h-4 text-teal-600" />
-                        Buka Lokasi di Google Maps
+                        <span>Buka Lokasi di Google Maps</span>
                         <ExternalLink className="w-3 h-3 text-slate-400" />
                     </a>
                 ) : (
@@ -731,10 +864,10 @@ export default function CustomerDetailPage() {
                         href={customer.billing_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-700 hover:underline"
+                        className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-sky-700 bg-sky-50/80 hover:bg-sky-100/80 sm:bg-transparent px-3 py-2.5 sm:py-1 rounded-xl transition-colors active:scale-95"
                     >
                         <Globe className="w-4 h-4 text-sky-600" />
-                        Buka di Billingnesia
+                        <span>Buka di Billingnesia</span>
                         <ExternalLink className="w-3 h-3 text-slate-400" />
                     </a>
                 )}
