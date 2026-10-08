@@ -1018,6 +1018,150 @@ export async function searchBillingnesiaCandidates(query: string): Promise<Billi
 }
 
 /**
+ * Mengambil dan mem-parsing data tab (Invoice, Tiket, ISOLIR, Log) dari endpoint AJAX Billingnesia:
+ * /admin/data/detailPelangganTabData/{invoice|tiket|isolir|log}/{customerId}
+ */
+async function enrichCustomerTabData(
+    data: BillingnesiaScrapedData,
+    customerId: string,
+    baseUrl: string,
+    cookie: string
+): Promise<void> {
+    const cleanCustId = customerId.trim();
+    if (!cleanCustId) return;
+
+    const baseTabUrl = `${baseUrl.replace(/\/+$/, "")}/admin/data/detailPelangganTabData`;
+
+    const [invRes, tktRes, isoRes, logRes] = await Promise.all([
+        requestUrl(`${baseTabUrl}/invoice/${cleanCustId}`, {
+            headers: { Cookie: cookie, "X-Requested-With": "XMLHttpRequest" },
+        }).catch(() => null),
+        requestUrl(`${baseTabUrl}/tiket/${cleanCustId}`, {
+            headers: { Cookie: cookie, "X-Requested-With": "XMLHttpRequest" },
+        }).catch(() => null),
+        requestUrl(`${baseTabUrl}/isolir/${cleanCustId}`, {
+            headers: { Cookie: cookie, "X-Requested-With": "XMLHttpRequest" },
+        }).catch(() => null),
+        requestUrl(`${baseTabUrl}/log/${cleanCustId}`, {
+            headers: { Cookie: cookie, "X-Requested-With": "XMLHttpRequest" },
+        }).catch(() => null),
+    ]);
+
+    // 1. INVOICE: ["NO INVOICE", "LAYANAN", "TOTAL", "TERBIT", "TEMPO", "STATUS", "AKSI"]
+    if (invRes && invRes.body) {
+        const invTables = extractHtmlTables(invRes.body);
+        const parsedInvoices: CustomerInvoiceItem[] = [];
+        let totalUnpaid = 0;
+        for (const t of invTables) {
+            for (const r of t.rows) {
+                const invNo = r[0] || "";
+                if (!invNo || invNo.toUpperCase().includes("INVOICE") || invNo === "#NO") continue;
+                const status = (r[5] || r[4] || "UNPAID").toUpperCase();
+                const amount = r[2] || "-";
+                parsedInvoices.push({
+                    invoice_no: invNo,
+                    period: r[1] || "-",
+                    amount: amount,
+                    due_date: r[4] || r[3] || "-",
+                    status: status,
+                });
+                if (status.includes("JATUH") || status.includes("TEMPO") || status.includes("UNPAID")) {
+                    const cleanNum = parseInt(amount.replace(/\D/g, ""), 10);
+                    if (!isNaN(cleanNum)) totalUnpaid += cleanNum;
+                }
+            }
+        }
+        if (parsedInvoices.length > 0) {
+            data.invoices = parsedInvoices;
+            if (!data.unpaid_amount || data.unpaid_amount === 0) {
+                data.unpaid_amount = totalUnpaid;
+            }
+        }
+    }
+
+    // 2. TIKET: ["#ID", "TGL DIBUAT", "TINDAKAN TERAKHIR", "%", "STATUS", "AKSI"]
+    if (tktRes && tktRes.body) {
+        const tktTables = extractHtmlTables(tktRes.body);
+        const parsedTickets: CustomerTicketItem[] = [];
+        for (const t of tktTables) {
+            for (const r of t.rows) {
+                const tId = r[0] || "";
+                if (!tId || tId.toUpperCase().includes("TIKET") || tId === "#ID") continue;
+                parsedTickets.push({
+                    ticket_id: tId,
+                    created_at: r[1] || "-",
+                    last_action: r[2] || "-",
+                    progress: r[3] || "100%",
+                    status: (r[4] || "SELESAI").toUpperCase(),
+                });
+            }
+        }
+        if (parsedTickets.length > 0) {
+            data.tickets = parsedTickets;
+        }
+    }
+
+    // 3. ISOLIR: ["#ID", "TGL DIBUAT", "TINDAKAN TERAKHIR", "STATUS", "AKSI"]
+    if (isoRes && isoRes.body) {
+        const isoTables = extractHtmlTables(isoRes.body);
+        const parsedIsolirs: CustomerIsolirItem[] = [];
+        for (const t of isoTables) {
+            for (const r of t.rows) {
+                const isoId = r[0] || "";
+                if (!isoId || isoId.toUpperCase().includes("ISOLIR") || isoId === "#ID") continue;
+                const actionText = r[2] || "-";
+                const status = (r[3] || "TERISOLIR").toUpperCase();
+                parsedIsolirs.push({
+                    isolated_date: r[1] || "-",
+                    reopened_date: status.includes("CLOSED") || status.includes("ACTIVE") ? actionText : "-",
+                    reason: actionText,
+                    status: status,
+                });
+            }
+        }
+        if (parsedIsolirs.length > 0) {
+            data.isolirs = parsedIsolirs;
+        }
+    }
+
+    // 4. LOG: ["TANGGAL", "KETERANGAN"]
+    if (logRes && logRes.body) {
+        const logTables = extractHtmlTables(logRes.body);
+        const parsedLogs: CustomerLogItem[] = [];
+        for (const t of logTables) {
+            for (const r of t.rows) {
+                const date = r[0] || "";
+                if (!date || date.toUpperCase().includes("TANGGAL")) continue;
+                const ket = r[1] || "-";
+                let user = "System";
+                const userMatch = ket.match(/oleh\s*:\s*([^,.\n]+)/i);
+                if (userMatch) {
+                    user = userMatch[1].trim();
+                }
+                parsedLogs.push({
+                    date: date,
+                    user: user,
+                    activity: ket,
+                });
+            }
+        }
+        if (parsedLogs.length > 0) {
+            data.logs = parsedLogs;
+        }
+    }
+
+    // 5. Update counts
+    if (!data.tab_counts) {
+        data.tab_counts = {};
+    }
+    data.tab_counts.services = data.services?.length || data.tab_counts.services || 0;
+    data.tab_counts.invoices = data.invoices?.length || data.tab_counts.invoices || 0;
+    data.tab_counts.tickets = data.tickets?.length || data.tab_counts.tickets || 0;
+    data.tab_counts.isolirs = data.isolirs?.length || data.tab_counts.isolirs || 0;
+    data.tab_counts.logs = data.logs?.length || data.tab_counts.logs || 0;
+}
+
+/**
  * Service Utama: Scrape Data Billingnesia secara On-Demand
  * Mendukung pencarian instan via Nomor Tiket, ID Pelanggan, atau Nama / Daerah dengan seleksi interaktif
  */
@@ -1150,6 +1294,16 @@ export async function scrapeBillingnesiaData(
                 }
             } catch (enrichErr) {
                 console.warn("[Scraper] Gagal memperkaya data pelanggan dari tiket:", enrichErr);
+            }
+        }
+
+        // 3. Selalu perkaya data tabel tab (Invoice, Tiket, ISOLIR, Log) dari endpoint AJAX Billingnesia
+        const finalCustId = data.customer_id || (!isTicket ? cleanQuery : undefined);
+        if (finalCustId && /^\d{10,13}$/.test(finalCustId)) {
+            try {
+                await enrichCustomerTabData(data, finalCustId, baseUrl, cookie);
+            } catch (tabErr) {
+                console.warn("[Scraper] Gagal memperkaya tab detail pelanggan dari AJAX:", tabErr);
             }
         }
 
