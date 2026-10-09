@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { DismantleTask } from "@/lib/types/dismantle";
 import { getGoogleMapsUrl } from "@/lib/ftth/distance";
@@ -31,6 +32,8 @@ import {
     Globe,
     FileText,
     Activity,
+    Eye,
+    ChevronRight,
 } from "lucide-react";
 
 type TabKey = "info_pribadi" | "layanan" | "invoice" | "tiket" | "isolir" | "log";
@@ -186,22 +189,38 @@ export default function CustomerDetailPage() {
             setError(null);
 
             try {
-                // 1. Fetch from Supabase
-                const { data: tasks, error: dbError } = await supabase
+                // 1. Fetch from Supabase jika ada di dismantle_tasks
+                const { data: tasks } = await supabase
                     .from("dismantle_tasks")
                     .select("*")
                     .eq("customer_id", customerId)
                     .order("created_at", { ascending: false })
                     .limit(1);
 
-                if (dbError) throw new Error(dbError.message);
-                if (!tasks || tasks.length === 0) {
-                    setError(`Data pelanggan dengan ID "${customerId}" tidak ditemukan di database.`);
-                    setLoading(false);
-                    return;
-                }
+                const task = tasks && tasks.length > 0
+                    ? (tasks[0] as DismantleTask)
+                    : ({
+                        id: customerId,
+                        customer_id: customerId,
+                        customer_name: "Pelanggan",
+                        phone_number: null,
+                        address: "-",
+                        cluster_name: "Umum",
+                        parent_odp_name: null,
+                        device_type: "ONT ZTE F609",
+                        latitude: -7.8231,
+                        longitude: 111.9174,
+                        distance_meters: 0,
+                        status: "QUEUE",
+                        ticket_id: null,
+                        unpaid_amount: 0,
+                        billing_url: `https://billing.at-in.net/admin/data/detailpelanggan/${customerId}`,
+                        accessories: [],
+                        handover_status: false,
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                    } as DismantleTask);
 
-                const task = tasks[0] as DismantleTask;
                 const initialData = buildCustomerData(task, null);
                 setCustomer(initialData);
                 setLoading(false);
@@ -667,13 +686,17 @@ export default function CustomerDetailPage() {
                             {customer.tickets.length > 0 ? (
                                 <>
                                     {/* Mobile Cards View (Android & iOS) */}
-                                    <div className="block sm:hidden space-y-2.5">
+                                    <div className="block sm:hidden space-y-3">
                                         {customer.tickets.map((t, i) => (
-                                            <div key={i} className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-xs space-y-2">
+                                            <div key={i} className="p-4 bg-white rounded-xl border border-slate-200 shadow-xs space-y-2.5">
                                                 <div className="flex items-center justify-between gap-2">
-                                                    <span className="font-mono font-bold text-xs text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded">
+                                                    <Link
+                                                        href={`/dismantles/tickets/${encodeURIComponent(t.ticket_id)}?customer_id=${encodeURIComponent(customerId)}`}
+                                                        className="font-mono font-bold text-xs text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2.5 py-1 rounded-lg inline-block transition-colors"
+                                                        title="Buka Halaman Detail Tiket"
+                                                    >
                                                         {t.ticket_id}
-                                                    </span>
+                                                    </Link>
                                                     <div className="flex items-center gap-1.5">
                                                         <span className="font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px]">
                                                             {t.progress}
@@ -685,8 +708,15 @@ export default function CustomerDetailPage() {
                                                     <span className="text-[10px] font-semibold text-slate-400 block mb-0.5">TINDAKAN TERAKHIR:</span>
                                                     {t.last_action}
                                                 </div>
-                                                <div className="text-[10px] font-mono text-slate-400 text-right">
-                                                    Dibuat: {t.created_at}
+                                                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
+                                                    <span className="font-mono text-slate-400">Dibuat: {t.created_at}</span>
+                                                    <Link
+                                                        href={`/dismantles/tickets/${encodeURIComponent(t.ticket_id)}?customer_id=${encodeURIComponent(customerId)}`}
+                                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg border border-teal-200 transition-colors active:scale-95"
+                                                    >
+                                                        <Eye className="w-3.5 h-3.5" />
+                                                        <span>Detail Tiket</span>
+                                                    </Link>
                                                 </div>
                                             </div>
                                         ))}
@@ -702,13 +732,20 @@ export default function CustomerDetailPage() {
                                                     <th className="py-3 px-3">TINDAKAN TERAKHIR</th>
                                                     <th className="py-3 px-2 text-center">%</th>
                                                     <th className="py-3 px-3 text-center">STATUS</th>
+                                                    <th className="py-3 px-3 text-center">AKSI</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
                                                 {customer.tickets.map((t, i) => (
                                                     <tr key={i} className="hover:bg-slate-50/70 transition-colors">
                                                         <td className="py-3 px-4">
-                                                            <span className="font-mono font-bold text-teal-700">{t.ticket_id}</span>
+                                                            <Link
+                                                                href={`/dismantles/tickets/${encodeURIComponent(t.ticket_id)}?customer_id=${encodeURIComponent(customerId)}`}
+                                                                className="font-mono font-bold text-teal-700 hover:text-teal-900 hover:underline block"
+                                                                title="Buka Halaman Detail Tiket"
+                                                            >
+                                                                {t.ticket_id}
+                                                            </Link>
                                                         </td>
                                                         <td className="py-3 px-3 font-mono text-slate-600">{t.created_at}</td>
                                                         <td className="py-3 px-3 text-slate-800 font-medium">{t.last_action}</td>
@@ -719,6 +756,15 @@ export default function CustomerDetailPage() {
                                                         </td>
                                                         <td className="py-3 px-3 text-center">
                                                             <StatusBadge status={t.status} />
+                                                        </td>
+                                                        <td className="py-3 px-3 text-center">
+                                                            <Link
+                                                                href={`/dismantles/tickets/${encodeURIComponent(t.ticket_id)}?customer_id=${encodeURIComponent(customerId)}`}
+                                                                className="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 hover:bg-teal-600 hover:text-white inline-flex items-center justify-center transition-colors shadow-xs"
+                                                                title="Lihat Detail Tiket"
+                                                            >
+                                                                <Eye className="w-3.5 h-3.5" />
+                                                            </Link>
                                                         </td>
                                                     </tr>
                                                 ))}

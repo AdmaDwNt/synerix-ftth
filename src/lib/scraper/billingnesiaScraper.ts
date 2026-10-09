@@ -30,6 +30,41 @@ export interface CustomerTicketItem {
     last_action: string;
     progress: string;
     status: string;
+    detail_url?: string;
+}
+
+export interface TicketLogItem {
+    no: string;
+    creator: string;
+    log_date: string;
+    description: string;
+    progress: string;
+    attachment?: string;
+    pic: string;
+    employee: string;
+    action_id?: string;
+}
+
+export interface TicketDetailData {
+    ticket_id: string;
+    customer_id?: string;
+    customer_name?: string;
+    ip_address?: string;
+    status?: string;
+    progress_percent?: string;
+    badges: string[];
+    // Info Tiket
+    creator: string;
+    ticket_type: string;
+    category: string;
+    indication: string;
+    pic: string;
+    tag: string;
+    attachment?: string;
+    // Log Aktivitas
+    logs: TicketLogItem[];
+    log_count?: number;
+    billing_url: string;
 }
 
 export interface CustomerIsolirItem {
@@ -795,6 +830,7 @@ export function parseBillingnesiaHTML(
                     last_action: row[actionIdx !== -1 ? actionIdx : 2] || "-",
                     progress: row[progIdx !== -1 ? progIdx : 3] || "100%",
                     status: row[statusIdx !== -1 ? statusIdx : 4] || "SELESAI",
+                    detail_url: `https://billing.at-in.net/admin/tiket/detailtiket/${tId}`,
                 });
             }
         }
@@ -1093,6 +1129,7 @@ async function enrichCustomerTabData(
                     last_action: r[2] || "-",
                     progress: r[3] || "100%",
                     status: (r[4] || "SELESAI").toUpperCase(),
+                    detail_url: `${baseUrl.replace(/\/+$/, "")}/admin/tiket/detailtiket/${tId}`,
                 });
             }
         }
@@ -1327,3 +1364,384 @@ export async function scrapeBillingnesiaData(
         };
     }
 }
+
+/**
+ * Scraping live detail tiket dari Billingnesia:
+ * 1. Info Tiket dari: /admin/tiket/detailtiket/{ticket_id}
+ * 2. Log Aktivitas dari endpoint AJAX: /admin/tiket/tableTiketDetailLog/{ticket_id}
+ */
+export async function scrapeTicketDetail(ticketId: string): Promise<TicketDetailData> {
+    const cleanTicketId = ticketId.trim().toUpperCase();
+    if (!cleanTicketId) {
+        throw new Error("Nomor tiket tidak valid.");
+    }
+
+    const baseUrl = process.env.BILLINGNESIA_BASE_URL || "https://billing.at-in.net";
+    const detailUrl = `${baseUrl.replace(/\/+$/, "")}/admin/tiket/detailtiket/${encodeURIComponent(cleanTicketId)}`;
+
+    let cookie = await getActiveSessionCookie(baseUrl);
+    let detailRes = await requestUrl(detailUrl, {
+        headers: { Cookie: cookie },
+    });
+
+    if (detailRes.body.includes("LOGIN | BILLINGNESIA") || detailRes.statusCode === 401) {
+        cookie = await getActiveSessionCookie(baseUrl, true);
+        detailRes = await requestUrl(detailUrl, {
+            headers: { Cookie: cookie },
+        });
+    }
+
+    const detailHtml = detailRes.body;
+
+    // Helper extract value from Info Tiket grid
+    function extractInfoField(label: string): string {
+        const regex = new RegExp(`(?:${label})[\\s\\S]*?<div[^>]*class="[^"]*(?:text-sm|text-xs)[^"]*"[^>]*>([\\s\\S]*?)<\\/div>`, "i");
+        const match = detailHtml.match(regex);
+        if (match) {
+            return match[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+        }
+        return "";
+    }
+
+    // Extract customer, name, IP from header
+    let customerId = "";
+    let customerName = "";
+    let ipAddress = "";
+
+    const headerComboMatch = detailHtml.match(
+        /\b(\d{10,13})\s*-\s*([^<]+?)\s*-\s*(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/
+    );
+    if (headerComboMatch) {
+        customerId = headerComboMatch[1].trim();
+        customerName = headerComboMatch[2].trim();
+        ipAddress = headerComboMatch[3].trim();
+    }
+
+    if (!customerId) {
+        const cidMatch = detailHtml.match(/admin\/data\/detailpelanggan\/(\d{10,13})/);
+        if (cidMatch) customerId = cidMatch[1];
+    }
+    if (!customerName) {
+        const cnameMatch = detailHtml.match(/<div class="text-sm text-slate-700 mt-0\.5">([^<]+)<\/div>/);
+        if (cnameMatch) customerName = cnameMatch[1].trim();
+    }
+    if (!ipAddress) {
+        const ipMatch = detailHtml.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
+        if (ipMatch) ipAddress = ipMatch[0];
+    }
+
+    // Header badges
+    const badges: string[] = [];
+    const badgeRegex = /<span class="inline-flex[^"]*">([\s\S]*?)<\/span>/gi;
+    let b;
+    while ((b = badgeRegex.exec(detailHtml)) !== null) {
+        const text = b[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+        if (text && !text.includes("Detail") && text.length < 35 && !badges.includes(text)) {
+            badges.push(text);
+        }
+    }
+
+    let progressPercent = "";
+    const pctMatch = detailHtml.match(/(\d{1,3}%)/);
+    if (pctMatch) progressPercent = pctMatch[1];
+
+    const creator = extractInfoField("User Pembuat");
+    const ticketType = extractInfoField("Jenis Tiket");
+    const category = extractInfoField("Kategori Tiket");
+    const indication = extractInfoField("Keterangan\\s*\\/\\s*Indikasi Awal");
+    const pic = extractInfoField("PJ Awal");
+    const tag = extractInfoField("Tag Karyawan");
+
+    // Lampiran parsing
+    let attachment = "-";
+    const lampiranPos = detailHtml.indexOf(">Lampiran</div>");
+    if (lampiranPos !== -1) {
+        const sub = detailHtml.substring(lampiranPos, lampiranPos + 500);
+        const aMatch = sub.match(/<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+        if (aMatch) {
+            attachment = aMatch[1];
+        } else {
+            const spanMatch = sub.match(/<span[^>]*>([\s\S]*?)<\/span>/i);
+            if (spanMatch) {
+                attachment = spanMatch[1].replace(/<[^>]+>/g, " ").trim();
+            }
+        }
+    }
+
+    // Fetch Log Aktivitas from AJAX endpoint
+    const logs: TicketLogItem[] = [];
+    try {
+        const logTableUrl = `${baseUrl.replace(/\/+$/, "")}/admin/tiket/tableTiketDetailLog/${encodeURIComponent(cleanTicketId)}?page=1&perPage=50&sortCol=tgl_update&sortDir=DESC`;
+        const logRes = await requestUrl(logTableUrl, {
+            headers: {
+                Cookie: cookie,
+                "X-Requested-With": "XMLHttpRequest",
+            },
+        });
+
+        if (logRes.body && !logRes.body.includes("Session expired")) {
+            const trRegex = /<tr class="hover:bg-slate-50\/70[^"]*"[\s\S]*?<\/tr>/gi;
+            const trMatches = logRes.body.match(trRegex) || [];
+
+            for (const tr of trMatches) {
+                const tds: string[] = [];
+                const tdRegex = /<td[\s\S]*?<\/td>/gi;
+                let tdMatch;
+                while ((tdMatch = tdRegex.exec(tr)) !== null) {
+                    tds.push(tdMatch[0]);
+                }
+
+                if (tds.length >= 8) {
+                    const no = tds[0].replace(/<[^>]+>/g, " ").trim();
+                    const pembuat = tds[1].replace(/<[^>]+>/g, " ").trim();
+                    const tglLog = tds[2].replace(/<[^>]+>/g, " ").trim();
+                    const keterangan = tds[3].replace(/<[^>]+>/g, " ").trim();
+                    const persentase = tds[4].replace(/<[^>]+>/g, " ").trim();
+
+                    const imgMatch = tds[5].match(/window\.openImgViewer\(['"]([^'"]+)['"]\)/i) || tds[5].match(/src=['"]([^'"]+)['"]/i);
+                    const lampiran = imgMatch ? imgMatch[1] : "";
+
+                    const pj = tds[6].replace(/<[^>]+>/g, " ").trim();
+                    const karyawan = tds[7].replace(/<[^>]+>/g, " ").trim();
+
+                    const dtlMatch = tds[8] ? tds[8].match(/DTL\d+/i) : null;
+                    const aksiId = dtlMatch ? dtlMatch[0] : "";
+
+                    logs.push({
+                        no,
+                        creator: pembuat,
+                        log_date: tglLog,
+                        description: keterangan,
+                        progress: persentase,
+                        attachment: lampiran,
+                        pic: pj,
+                        employee: karyawan,
+                        action_id: aksiId,
+                    });
+                }
+            }
+        }
+    } catch (logErr) {
+        console.warn(`[Scraper] Gagal mengambil log tiket untuk ${cleanTicketId}:`, logErr);
+    }
+
+    return {
+        ticket_id: cleanTicketId,
+        customer_id: customerId,
+        customer_name: customerName,
+        ip_address: ipAddress,
+        status: badges[0] || "SELESAI",
+        progress_percent: progressPercent || "100%",
+        badges,
+        creator: creator || "-",
+        ticket_type: ticketType || "TEKNIS",
+        category: category || "MAINTENANCE RETAIL",
+        indication: indication || "-",
+        pic: pic || "-",
+        tag: tag || "-",
+        attachment,
+        logs,
+        log_count: logs.length,
+        billing_url: detailUrl,
+    };
+}
+
+export interface ScrapedWorkTicket {
+    no?: string;
+    ticket_id: string;
+    created_at: string;
+    ticket_type: string;
+    category: string;
+    title_category: string;
+    customer_id?: string;
+    customer_name?: string;
+    pic: string;
+    last_action: string;
+    last_action_date?: string;
+    last_action_pic?: string;
+    last_action_text?: string;
+    progress_percent: string;
+    status?: string;
+}
+
+/**
+ * Scraping daftar tiket langsung dari https://billing.at-in.net/admin/tiket/tableTiket
+ * Khusus untuk halaman Pekerjaan (Work Logs) tanpa mencampuradukkan data dismantle
+ */
+export async function scrapeWorkTicketsTable(options: {
+    date?: string;
+    jenis?: string;
+    page?: number;
+    perPage?: number;
+    search?: string;
+} = {}): Promise<{
+    tickets: ScrapedWorkTicket[];
+    total: number;
+    page: number;
+    perPage: number;
+    date: string;
+}> {
+    const baseUrl = process.env.BILLINGNESIA_BASE_URL || "https://billing.at-in.net";
+    const targetDate = options.date || new Date().toISOString().slice(0, 10);
+    const targetJenis = options.jenis || "TEKNIS";
+    const targetPage = options.page || 1;
+    const targetPerPage = options.perPage || 25;
+
+    const queryParams = new URLSearchParams({
+        page: String(targetPage),
+        perPage: String(targetPerPage),
+        tgl_tiket: targetDate,
+        jenis: targetJenis,
+    });
+    if (options.search) {
+        queryParams.append("search", options.search.trim());
+    }
+
+    const tableUrl = `${baseUrl.replace(/\/+$/, "")}/admin/tiket/tableTiket?${queryParams.toString()}`;
+
+    let cookie = await getActiveSessionCookie(baseUrl);
+    let res = await requestUrl(tableUrl, {
+        headers: {
+            Cookie: cookie,
+            "X-Requested-With": "XMLHttpRequest",
+        },
+    });
+
+    if (res.body.includes("LOGIN | BILLINGNESIA") || res.statusCode === 401) {
+        cookie = await getActiveSessionCookie(baseUrl, true);
+        res = await requestUrl(tableUrl, {
+            headers: {
+                Cookie: cookie,
+                "X-Requested-With": "XMLHttpRequest",
+            },
+        });
+    }
+
+    const html = res.body;
+    const tickets: ScrapedWorkTicket[] = [];
+
+    // Parse baris tabel (TR) — handle all classes like hover:brightness-95, bg-emerald-50/60, etc.
+    const trRegex = /<tr(?:\s+class="[^"]*")?[^>]*>([\s\S]*?)<\/tr>/gi;
+    let match;
+    let idx = 1;
+
+    while ((match = trRegex.exec(html)) !== null) {
+        const rawTr = match[1];
+        if (!rawTr.includes("TKT")) continue;
+
+        // Bersihkan HTML comments terlebih dahulu agar regex tidak salah tangkap comment
+        const trContent = rawTr.replace(/<!--[\s\S]*?-->/g, "");
+
+        // 1. Ticket ID
+        const tktMatch = trContent.match(/(TKT\d{10,16})/);
+        const ticket_id = tktMatch ? tktMatch[1] : "";
+        if (!ticket_id) continue;
+
+        // 2. Tanggal pembuatan (format YYYY-MM-DD HH:mm:ss)
+        const dateMatch = trContent.match(/\b(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\b/);
+        const created_at = dateMatch ? dateMatch[1] : "";
+
+        // 3. Jenis (misal TEKNIS)
+        const jenisMatch = trContent.match(/<span[^>]*class="[^"]*(?:border-slate-200|rounded-full)[^"]*"[^>]*>\s*(TEKNIS|NON TEKNIS|[A-Z\s]+)\s*<\/span>/i);
+        const ticket_type = jenisMatch ? jenisMatch[1].trim() : "TEKNIS";
+
+        // 4. Kategori (misal MAINTENANCE RETAIL)
+        const katMatch = trContent.match(/<td class="[^"]*whitespace-nowrap[^"]*font-medium">\s*([^<]+)\s*<\/td>/i);
+        const category = katMatch ? katMatch[1].trim() : "MAINTENANCE RETAIL";
+
+        // 5. Judul Kategori & Pelanggan
+        let title_category = "MAINTENANCE PELANGGAN RETAIL";
+        let customer_id = "";
+        let customer_name = "";
+
+        const titleDivMatch = trContent.match(/<div class="text-xs font-semibold text-slate-800 leading-snug">([^<]+)<\/div>/i);
+        if (titleDivMatch) {
+            title_category = titleDivMatch[1].trim();
+        }
+
+        const custLinkMatch = trContent.match(/admin\/data\/detailpelanggan\/(\d{10,15})/i);
+        if (custLinkMatch) {
+            customer_id = custLinkMatch[1].trim();
+        }
+
+        // Customer name spesifik setelah link detailpelanggan / tanda dash
+        const custNameMatch = trContent.match(/detailpelanggan\/\d+[^>]*>[^<]*<\/a>\s*(?:—|&mdash;)\s*([^<\n\r]+)/i) ||
+            trContent.match(/(?:—|&mdash;)\s*([^<\n\r]+)/i);
+        if (custNameMatch) {
+            customer_name = custNameMatch[1].replace(/<\/?[^>]+>/g, "").trim();
+        }
+
+        // 6. PJ Terakhir: ambil dari data-pj="..." atau td kolom PJ Terakhir
+        let pic = "";
+        const dataPjMatch = trContent.match(/data-pj="([^"]+)"/i);
+        if (dataPjMatch) {
+            pic = dataPjMatch[1].trim();
+        } else {
+            const pjTdMatch = trContent.match(/<td class="px-4 py-3 hidden sm:table-cell whitespace-nowrap text-xs text-slate-600">([^<]+)<\/td>/i);
+            if (pjTdMatch) {
+                pic = pjTdMatch[1].trim();
+            }
+        }
+
+        // 7. Tindakan Terakhir
+        let last_action = "";
+        let last_action_date = "";
+        let last_action_pic = pic;
+        let last_action_text = "";
+
+        const tindakTdMatch = trContent.match(/<td class="px-4 py-3 hidden sm:table-cell text-xs text-slate-600 max-w-\[240px\]">([\s\S]*?)<\/td>/i);
+        if (tindakTdMatch) {
+            last_action = tindakTdMatch[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+
+            const actionParsed = last_action.match(/^([\d\-:\s]+)?\s*(?:\[(.*?)\])?\s*(.*)$/);
+            if (actionParsed) {
+                last_action_date = (actionParsed[1] || "").trim();
+                if (actionParsed[2]) {
+                    last_action_pic = actionParsed[2].trim();
+                    if (!pic) pic = last_action_pic;
+                }
+                last_action_text = (actionParsed[3] || "").trim();
+            }
+        }
+
+        // 8. % Progress
+        let progress_percent = "100%";
+        const pctMatch = trContent.match(/(\d{1,3}%)/);
+        if (pctMatch) {
+            progress_percent = pctMatch[1];
+        }
+
+        tickets.push({
+            no: String(idx++),
+            ticket_id,
+            created_at,
+            ticket_type,
+            category,
+            title_category,
+            customer_id,
+            customer_name,
+            pic: pic || last_action_pic || "-",
+            last_action,
+            last_action_date,
+            last_action_pic,
+            last_action_text,
+            progress_percent,
+        });
+    }
+
+    // Hitung total dari pagination jika ada
+    let totalTickets = tickets.length;
+    const totalMatch = html.match(/dari\s*<span[^>]*class="font-semibold[^"]*"[^>]*>(\d+)<\/span>\s*data/i);
+    if (totalMatch) {
+        totalTickets = parseInt(totalMatch[1], 10) || tickets.length;
+    }
+
+    return {
+        tickets,
+        total: totalTickets,
+        page: targetPage,
+        perPage: targetPerPage,
+        date: targetDate,
+    };
+}
+

@@ -4,29 +4,19 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import {
     Plus,
     Search,
-    Filter,
     FileText,
     RefreshCw,
-    MapPin,
-    Home,
-    Wifi,
-    Briefcase,
-    Megaphone,
     Calendar,
-    Radio,
-    ClipboardPaste,
-    Sparkles
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import WorkLogCard from "@/components/work-logs/WorkLogCard";
 import WorkLogTable from "@/components/work-logs/WorkLogTable";
 import DataTablePagination from "@/components/layout/DataTablePagination";
-import SummaryMetricsStrip from "@/components/layout/SummaryMetricsStrip";
+
 import EditWorkLogModal, { WorkLogItem } from "@/components/work-logs/EditWorkLogModal";
+import WorkLogSearchAddModal from "@/components/work-logs/WorkLogSearchAddModal";
 import CustomSelect from "@/components/ui/CustomSelect";
-import BillingnesiaAutofillBanner from "@/components/ui/BillingnesiaAutofillBanner";
 import ToastNotification, { ToastItem } from "@/components/ui/ToastNotification";
-import { BillingnesiaScrapedData } from "@/lib/scraper/billingnesiaScraper";
 
 export default function WorkLogsPage() {
     const supabase = createClient();
@@ -35,10 +25,8 @@ export default function WorkLogsPage() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [activeLogForEdit, setActiveLogForEdit] = useState<WorkLogItem | null>(null);
     const [loading, setLoading] = useState(false);
-    const [gettingLocation, setGettingLocation] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState("ALL");
-    const [pasteText, setPasteText] = useState("");
     const [toasts, setToasts] = useState<ToastItem[]>([]);
 
     const addToast = (item: Omit<ToastItem, "id">) => {
@@ -70,22 +58,9 @@ export default function WorkLogsPage() {
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, []);
 
-    // Pagination (Pilihan 10, 25, 50, 100 sesuai permintaan pengguna)
+    // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(25);
-
-    // State Form Input Baru
-    const [formData, setFormData] = useState({
-        title: "",
-        category: "MAINTENANCE_RETAIL" as WorkLogItem["category"],
-        case_description: "",
-        resolution: "",
-        optical_power_in: "",
-        optical_power_out: "",
-        status: "DONE" as WorkLogItem["status"],
-        latitude: null as number | null,
-        longitude: null as number | null,
-    });
 
     // Fetch Data Pekerjaan murni dari Supabase
     const fetchWorkLogs = async () => {
@@ -115,154 +90,7 @@ export default function WorkLogsPage() {
         setCurrentPage(1);
     }, [selectedCategory, searchQuery]);
 
-    // Ambil Koordinat GPS HP Saat Ini
-    const handleGetCurrentLocation = () => {
-        if (!navigator.geolocation) {
-            alert("Browser/HP Anda tidak mendukung Geolocation");
-            return;
-        }
-        setGettingLocation(true);
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                setFormData((prev) => ({
-                    ...prev,
-                    latitude: position.coords.latitude,
-                    longitude: position.coords.longitude,
-                }));
-                setGettingLocation(false);
-            },
-            (error) => {
-                alert("Gagal mengambil lokasi: " + error.message);
-                setGettingLocation(false);
-            },
-            { enableHighAccuracy: true }
-        );
-    };
 
-    // Parser teks tiket dari billing.at-in.net
-    const parseTicketText = (text: string) => {
-        const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-
-        const getValueAfterLabel = (label: string): string => {
-            const idx = lines.findIndex((l) => l.toLowerCase() === label.toLowerCase());
-            if (idx !== -1 && idx + 1 < lines.length) {
-                return lines[idx + 1];
-            }
-            return "";
-        };
-
-        const title = getValueAfterLabel("Judul");
-        const kategori = getValueAfterLabel("Kategori Tiket");
-        const caseDesc = getValueAfterLabel("Keterangan / Indikasi Awal");
-
-        // Map kategori text to enum value
-        let category: WorkLogItem["category"] = "MAINTENANCE_RETAIL";
-        const k = kategori.toUpperCase();
-        if (k.includes("JARINGAN") || k.includes("NETWORK")) category = "MAINTENANCE_NETWORK";
-        else if (k.includes("RETAIL") || k.includes("PELANGGAN")) category = "MAINTENANCE_RETAIL";
-        else if (k.includes("PROJECT") || k.includes("INSTALASI")) category = "PROJECT";
-        else if (k.includes("DISMANTLE") || k.includes("CABUT")) category = "DISMANTLE";
-        else if (k) category = "OTHER";
-
-        // Extract percentage for status
-        let status: WorkLogItem["status"] = "IN_PROGRESS";
-        const percentMatch = text.match(/(\d+)%/);
-        if (percentMatch) {
-            const pct = parseInt(percentMatch[1]);
-            if (pct === 100) status = "DONE";
-            else if (pct >= 50) status = "IN_PROGRESS";
-            else status = "PENDING";
-        }
-
-        return { title, category, case_description: caseDesc, status };
-    };
-
-    const handlePasteAutofill = (text: string) => {
-        setPasteText(text);
-        if (!text.trim()) return;
-
-        const parsed = parseTicketText(text);
-        setFormData((prev) => ({
-            ...prev,
-            title: parsed.title || prev.title,
-            category: parsed.category || prev.category,
-            case_description: parsed.case_description || prev.case_description,
-            status: parsed.status || prev.status,
-        }));
-    };
-
-    // Handler data autofill dari On-Demand Scraper Billingnesia
-    const handleScraperAutofill = (data: BillingnesiaScrapedData) => {
-        let cat: WorkLogItem["category"] = "MAINTENANCE_RETAIL";
-        const k = (data.category || "").toUpperCase();
-        if (k.includes("JARINGAN") || k.includes("NETWORK")) cat = "MAINTENANCE_NETWORK";
-        else if (k.includes("RETAIL") || k.includes("PELANGGAN")) cat = "MAINTENANCE_RETAIL";
-        else if (k.includes("PROJECT") || k.includes("INSTALASI")) cat = "PROJECT";
-        else if (k.includes("DISMANTLE") || k.includes("CABUT")) cat = "DISMANTLE";
-        else if (k) cat = "OTHER";
-
-        const titleText = data.ticket_id
-            ? `[${data.ticket_id}] ${data.customer_name || "Tiket Lapangan"}`
-            : data.customer_name || formData.title;
-
-        const infoLines = [
-            data.address ? `Alamat: ${data.address}` : "",
-            data.phone_number ? `WhatsApp/HP: ${data.phone_number}` : "",
-            data.unpaid_amount > 0 ? `Tunggakan: Rp ${data.unpaid_amount.toLocaleString("id-ID")}` : "",
-            data.device_type ? `ONT: ${data.device_type}` : "",
-        ].filter(Boolean).join(" | ");
-
-        setFormData((prev) => ({
-            ...prev,
-            title: titleText || prev.title,
-            category: cat,
-            case_description: prev.case_description ? `${prev.case_description}\n(${infoLines})` : infoLines,
-            latitude: data.latitude ?? prev.latitude,
-            longitude: data.longitude ?? prev.longitude,
-        }));
-    };
-
-    // Submit Log Pekerjaan Baru (CREATE)
-    const handleCreateSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-
-        const payload = {
-            id: crypto.randomUUID(),
-            title: formData.title.trim(),
-            category: formData.category,
-            case_description: formData.case_description.trim(),
-            resolution: formData.resolution.trim(),
-            optical_power_in: formData.optical_power_in ? parseFloat(formData.optical_power_in) : null,
-            optical_power_out: formData.optical_power_out ? parseFloat(formData.optical_power_out) : null,
-            status: formData.status,
-            latitude: formData.latitude,
-            longitude: formData.longitude,
-            created_at: new Date().toISOString(),
-        };
-
-        const { error } = await supabase.from("work_logs").insert([payload]);
-
-        if (error) {
-            alert("Gagal menyimpan data: " + error.message);
-        } else {
-            setIsCreateModalOpen(false);
-            setPasteText("");
-            setFormData({
-                title: "",
-                category: "MAINTENANCE_RETAIL",
-                case_description: "",
-                resolution: "",
-                optical_power_in: "",
-                optical_power_out: "",
-                status: "DONE",
-                latitude: null,
-                longitude: null,
-            });
-            setLogs((prev) => [payload as WorkLogItem, ...prev]);
-        }
-        setLoading(false);
-    };
 
     // Hapus Log Pekerjaan langsung dengan Toast Notification (non-blocking)
     const handleDirectDeleteLog = async (log: WorkLogItem) => {
@@ -355,54 +183,7 @@ export default function WorkLogsPage() {
 
             {/* Main Content Area (Fluid full-width: w-full px-4 sm:px-6 lg:px-8) */}
             <div className="w-full px-4 sm:px-6 lg:px-8 pt-5 space-y-5">
-                {/* 1. Top 4 Metric Cards (Matching Image 1) */}
-                <SummaryMetricsStrip
-                    items={[
-                        {
-                            id: "maint_retail",
-                            label: "MAINTENANCE RETAIL",
-                            value: logs.filter((l) => l.category === "MAINTENANCE_RETAIL").length,
-                            icon: <Home className="w-5 h-5 sm:w-6 sm:h-6" />,
-                            colorScheme: "amber",
-                            filterValue: "MAINTENANCE_RETAIL",
-                        },
-                        {
-                            id: "maint_network",
-                            label: "MAINTENANCE JARINGAN",
-                            value: logs.filter((l) => l.category === "MAINTENANCE_NETWORK").length,
-                            icon: <Wifi className="w-5 h-5 sm:w-6 sm:h-6" />,
-                            colorScheme: "amber",
-                            filterValue: "MAINTENANCE_NETWORK",
-                        },
-                        {
-                            id: "project",
-                            label: "PROJECT",
-                            value: logs.filter((l) => l.category === "PROJECT").length,
-                            icon: <Briefcase className="w-5 h-5 sm:w-6 sm:h-6" />,
-                            colorScheme: "amber",
-                            filterValue: "PROJECT",
-                        },
-                        {
-                            id: "other",
-                            label: "KEGIATAN LAINNYA",
-                            value: logs.filter((l) => l.category === "OTHER").length,
-                            icon: <Megaphone className="w-5 h-5 sm:w-6 sm:h-6" />,
-                            colorScheme: "amber",
-                            filterValue: "OTHER",
-                        },
-                    ]}
-                    activeId={selectedCategory !== "ALL" ? {
-                        MAINTENANCE_RETAIL: "maint_retail",
-                        MAINTENANCE_NETWORK: "maint_network",
-                        PROJECT: "project",
-                        OTHER: "other",
-                    }[selectedCategory] || null : null}
-                    onItemClick={(filterValue, itemId) => {
-                        setSelectedCategory((prev) =>
-                            prev === filterValue ? "ALL" : filterValue
-                        );
-                    }}
-                />
+
 
                 {/* 2. Main White Container (Matching Image 1) */}
                 <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
@@ -548,244 +329,20 @@ export default function WorkLogsPage() {
                 </div>
             </div>
 
-            {/* Modal Catat Pekerjaan Baru (CREATE) */}
-            {isCreateModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 overflow-y-auto">
-                    <div className="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-xl border border-slate-100 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto no-scrollbar">
-                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                            <div>
-                                <h3 className="font-bold text-base text-slate-900">Catat Pekerjaan Baru</h3>
-                                <p className="text-xs text-slate-500">Input case operasional, maintenance atau project</p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setIsCreateModalOpen(false)}
-                                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
-                            >
-                                ✕
-                            </button>
-                        </div>
-
-                        {/* Banner Tarik Data Otomatis dari Billingnesia (On-Demand Scraper) */}
-                        <div className="mt-4">
-                            <BillingnesiaAutofillBanner
-                                onDataFetched={handleScraperAutofill}
-                                placeholder="Masukkan No. Tiket (TKT...) atau ID Pelanggan"
-                            />
-                        </div>
-
-                        {/* Quick Paste Box (Metode Manual / Cadangan) */}
-                        <div className="mt-3 p-3 bg-slate-50/90 rounded-xl border border-slate-200/80">
-                            <div className="flex items-center gap-1.5 mb-1.5">
-                                <ClipboardPaste className="h-3.5 w-3.5 text-teal-700" />
-                                <span className="text-[11px] font-bold text-teal-800 uppercase tracking-wide">Quick Paste — Import dari Billing</span>
-                            </div>
-                            <p className="text-[10px] text-teal-600/90 mb-2">
-                                Paste teks detail tiket dari <span className="font-bold">billing.at-in.net</span> untuk auto-fill form di bawah.
-                            </p>
-                            <textarea
-                                rows={3}
-                                placeholder={`Paste teks tiket di sini...\n\nContoh:\nJudul\nKABEL TERTINDIH POHON\nKategori Tiket\nMAINTENANCE JARINGAN`}
-                                value={pasteText}
-                                onChange={(e) => handlePasteAutofill(e.target.value)}
-                                className="w-full px-3 py-2 text-xs rounded-lg border border-teal-300/80 bg-white/90 focus:ring-2 focus:ring-teal-500 focus:outline-none font-mono text-slate-700 placeholder:text-slate-400 resize-none"
-                            />
-                            {pasteText.trim() && (
-                                <div className="mt-1.5 flex items-center gap-1 text-[10px] text-emerald-700 font-semibold">
-                                    <Sparkles className="h-3 w-3" />
-                                    Form berhasil di-autofill dari teks tiket
-                                </div>
-                            )}
-                        </div>
-
-                        <form onSubmit={handleCreateSubmit} className="mt-3 space-y-3.5">
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                                    Judul / Nama Case *
-                                </label>
-                                <input
-                                    type="text"
-                                    required
-                                    placeholder="Contoh: Kabel Tertindih Pohon / ONU Loss"
-                                    value={formData.title}
-                                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 font-semibold focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                                        Kategori Pekerjaan
-                                    </label>
-                                    <CustomSelect
-                                        value={formData.category}
-                                        onChange={(val) =>
-                                            setFormData({ ...formData, category: val as any })
-                                        }
-                                        options={[
-                                            { value: "MAINTENANCE_NETWORK", label: "Maintenance Jaringan", colorDot: "bg-amber-500", description: "Gangguan / perbaikan jaringan" },
-                                            { value: "MAINTENANCE_RETAIL", label: "Maintenance Retail", colorDot: "bg-sky-500", description: "Gangguan pelanggan / rumah" },
-                                            { value: "PROJECT", label: "Project / Instalasi Baru", colorDot: "bg-blue-500", description: "Pemasangan baru" },
-                                            { value: "DISMANTLE", label: "Dismantle / Pencabutan", colorDot: "bg-rose-500", description: "Penarikan perangkat" },
-                                            { value: "OTHER", label: "Lainnya", colorDot: "bg-slate-400", description: "Kategori lain" },
-                                        ]}
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                                        Status
-                                    </label>
-                                    <CustomSelect
-                                        value={formData.status}
-                                        onChange={(val) =>
-                                            setFormData({ ...formData, status: val as any })
-                                        }
-                                        options={[
-                                            { value: "DONE", label: "Selesai (DONE)", colorDot: "bg-emerald-500", description: "Pekerjaan sudah selesai" },
-                                            { value: "IN_PROGRESS", label: "Sedang Dikerjakan", colorDot: "bg-blue-500", description: "Dalam proses pengerjaan" },
-                                            { value: "PENDING", label: "Menunggu / Pending", colorDot: "bg-amber-500", description: "Menunggu konfirmasi" },
-                                            { value: "ESCALATED", label: "Eskalasi", colorDot: "bg-rose-500", description: "Butuh penanganan lanjut" },
-                                        ]}
-                                    />
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                                    Deskripsi Masalah / Case *
-                                </label>
-                                <textarea
-                                    rows={2}
-                                    required
-                                    placeholder="Detail temuan di lapangan..."
-                                    value={formData.case_description}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, case_description: e.target.value })
-                                    }
-                                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                                    Tindakan / Solusi
-                                </label>
-                                <textarea
-                                    rows={2}
-                                    placeholder="Tindakan yang telah dieksekusi..."
-                                    value={formData.resolution}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, resolution: e.target.value })
-                                    }
-                                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-2.5 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                                        Redaman ODP (dBm)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="any"
-                                        placeholder="-18.5"
-                                        value={formData.optical_power_in}
-                                        onChange={(e) =>
-                                            setFormData({ ...formData, optical_power_in: e.target.value })
-                                        }
-                                        className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-mono"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                                        Redaman Rumah (dBm)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="any"
-                                        placeholder="-19.8"
-                                        value={formData.optical_power_out}
-                                        onChange={(e) =>
-                                            setFormData({ ...formData, optical_power_out: e.target.value })
-                                        }
-                                        className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-mono"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Koordinat GPS */}
-                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1 uppercase">
-                                        <MapPin className="w-3.5 h-3.5 text-teal-600" /> Koordinat GPS
-                                    </span>
-                                    <button
-                                        type="button"
-                                        onClick={handleGetCurrentLocation}
-                                        disabled={gettingLocation}
-                                        className="text-[11px] font-semibold text-teal-700 hover:text-teal-800 disabled:opacity-50"
-                                    >
-                                        {gettingLocation ? "Membaca GPS..." : "Ambil Lokasi Saya"}
-                                    </button>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                        <label className="text-[10px] text-slate-500 font-semibold">Latitude</label>
-                                        <input
-                                            type="number"
-                                            step="any"
-                                            value={formData.latitude ?? ""}
-                                            onChange={(e) =>
-                                                setFormData({
-                                                    ...formData,
-                                                    latitude: e.target.value ? parseFloat(e.target.value) : null,
-                                                })
-                                            }
-                                            className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-mono"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] text-slate-500 font-semibold">Longitude</label>
-                                        <input
-                                            type="number"
-                                            step="any"
-                                            value={formData.longitude ?? ""}
-                                            onChange={(e) =>
-                                                setFormData({
-                                                    ...formData,
-                                                    longitude: e.target.value ? parseFloat(e.target.value) : null,
-                                                })
-                                            }
-                                            className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-mono"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsCreateModalOpen(false)}
-                                    className="px-3.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl"
-                                >
-                                    Batal
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={loading}
-                                    className="px-4 py-2 text-xs font-bold text-white bg-teal-700 hover:bg-teal-800 rounded-xl shadow-xs disabled:opacity-50"
-                                >
-                                    {loading ? "Menyimpan..." : "Simpan Pekerjaan"}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+            {/* Modal Tambah Pekerjaan via Scraper Billingnesia & Pilih Tiket */}
+            <WorkLogSearchAddModal
+                isOpen={isCreateModalOpen}
+                onClose={() => setIsCreateModalOpen(false)}
+                onSuccess={(newLog) => {
+                    setLogs((prev) => [newLog, ...prev]);
+                    addToast({
+                        type: "success",
+                        title: "Log Pekerjaan Disimpan",
+                        message: `Catatan pekerjaan "${newLog.title}" berhasil ditambahkan ke riwayat.`,
+                        durationMs: 4000,
+                    });
+                }}
+            />
 
             {/* Modal Edit Pekerjaan (UPDATE) */}
             <EditWorkLogModal
