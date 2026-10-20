@@ -306,19 +306,29 @@ function requestUrl(
 }
 
 /**
- * Melakukan login otomatis ke Billingnesia dan mengambil session cookie
+ * ============================================================================
+ * BAGIAN: AUTENTIKASI BILLINGNESIA (MULTI-USER & SYSTEM FALLBACK)
+ * ============================================================================
  */
-async function authenticateBillingnesia(baseUrl: string): Promise<string> {
-    const username = (process.env.BILLINGNESIA_USERNAME || "").trim();
-    const password = (process.env.BILLINGNESIA_PASSWORD || "").trim();
 
-    if (!username || !password || username === "akun_username_anda") {
-        throw new Error(
-            "Kredensial Billingnesia belum diatur di .env.local. Silakan isi variabel BILLINGNESIA_USERNAME & BILLINGNESIA_PASSWORD."
-        );
+/**
+ * Melakukan verifikasi login langsung ke Billingnesia dengan kredensial kustom
+ * Mengembalikan sessionCookie jika berhasil, atau throw Error dengan pesan spesifik jika gagal
+ */
+export async function loginToBillingnesia(
+    username: string,
+    password: string,
+    customBaseUrl?: string
+): Promise<{ sessionCookie: string; body: string }> {
+    const baseUrl = (customBaseUrl || process.env.BILLINGNESIA_BASE_URL || "https://billing.at-in.net").replace(/\/+$/, "");
+    const trimmedUsername = (username || "").trim();
+    const trimmedPassword = (password || "").trim();
+
+    if (!trimmedUsername || !trimmedPassword) {
+        throw new Error("Username dan password Billingnesia wajib diisi.");
     }
 
-    const loginUrl = `${baseUrl.replace(/\/+$/, "")}/login`;
+    const loginUrl = `${baseUrl}/login`;
 
     // 1. Ambil initial session cookie dari halaman login
     const initialRes = await requestUrl(loginUrl, { method: "GET" });
@@ -331,8 +341,8 @@ async function authenticateBillingnesia(baseUrl: string): Promise<string> {
 
     // 2. Submit form login
     const formData = new URLSearchParams();
-    formData.append("username", username);
-    formData.append("password", password);
+    formData.append("username", trimmedUsername);
+    formData.append("password", trimmedPassword);
     formData.append("login", "");
     const bodyPayload = formData.toString();
 
@@ -361,7 +371,13 @@ async function authenticateBillingnesia(baseUrl: string): Promise<string> {
     }
 
     // Periksa apakah login berhasil
-    if (loginRes.body.includes("border-red-500") || loginRes.body.includes("gagal")) {
+    const isFailed =
+        loginRes.body.includes("border-red-500") ||
+        loginRes.body.includes("Username / Password Salah") ||
+        loginRes.body.includes("gagal") ||
+        loginRes.statusCode === 401;
+
+    if (isFailed) {
         throw new Error("Gagal login ke Billingnesia: Username atau password tidak valid.");
     }
 
@@ -369,23 +385,54 @@ async function authenticateBillingnesia(baseUrl: string): Promise<string> {
         throw new Error("Gagal memperoleh cookie sesi dari Billingnesia.");
     }
 
+    return { sessionCookie, body: loginRes.body };
+}
+
+/**
+ * Melakukan login otomatis ke Billingnesia menggunakan kredensial sistem (.env.local)
+ */
+async function authenticateBillingnesia(baseUrl: string): Promise<string> {
+    const username = (process.env.BILLINGNESIA_USERNAME || "").trim();
+    const password = (process.env.BILLINGNESIA_PASSWORD || "").trim();
+
+    if (!username || !password || username === "akun_username_anda") {
+        throw new Error(
+            "Kredensial Billingnesia belum diatur di .env.local. Silakan isi variabel BILLINGNESIA_USERNAME & BILLINGNESIA_PASSWORD."
+        );
+    }
+
+    const { sessionCookie } = await loginToBillingnesia(username, password, baseUrl);
     cachedCookie = sessionCookie;
     lastLoginTime = Date.now();
     return sessionCookie;
 }
 
 /**
- * Mengambil cookie sesi aktif (cache reuse atau re-login)
+ * Mengambil cookie sesi aktif:
+ * 1. Jika userProvidedCookie ada, gunakan langsung (Multi-User Session Isolation).
+ * 2. Jika tidak, gunakan cache cookie sistem atau auto-login dari .env.local.
  */
-async function getActiveSessionCookie(baseUrl: string, forceRefresh = false): Promise<string> {
+export async function getActiveSessionCookie(
+    baseUrl: string,
+    forceRefresh = false,
+    userProvidedCookie?: string
+): Promise<string> {
+    // 1. Prioritaskan cookie sesi pengguna aktif
+    if (userProvidedCookie && userProvidedCookie.trim()) {
+        return userProvidedCookie.trim();
+    }
+
+    // 2. Cookie manual dari environment variable jika ada
     if (process.env.BILLINGNESIA_SESSION_COOKIE) {
         return process.env.BILLINGNESIA_SESSION_COOKIE;
     }
 
+    // 3. Cache sesi sistem
     if (!forceRefresh && cachedCookie && Date.now() - lastLoginTime < SESSION_CACHE_TTL_MS) {
         return cachedCookie;
     }
 
+    // 4. Auto-login sistem
     return await authenticateBillingnesia(baseUrl);
 }
 
@@ -988,12 +1035,15 @@ export function parseBillingnesiaHTML(
 /**
  * Mencari daftar kandidat pelanggan dari Billingnesia berdasarkan Nama atau Daerah (Desa/Dusun)
  */
-export async function searchBillingnesiaCandidates(query: string): Promise<BillingnesiaCandidate[]> {
+export async function searchBillingnesiaCandidates(
+    query: string,
+    userSessionCookie?: string
+): Promise<BillingnesiaCandidate[]> {
     const cleanQuery = query.trim();
     if (!cleanQuery) return [];
 
     const baseUrl = process.env.BILLINGNESIA_BASE_URL || "https://billing.at-in.net";
-    let cookie = await getActiveSessionCookie(baseUrl);
+    let cookie = await getActiveSessionCookie(baseUrl, false, userSessionCookie);
 
     const searchUrl = `${baseUrl.replace(/\/+$/, "")}/admin/data/listpelanggan?page=1&per_page=25&search=${encodeURIComponent(cleanQuery)}`;
 
@@ -1005,7 +1055,7 @@ export async function searchBillingnesiaCandidates(query: string): Promise<Billi
     });
 
     if (response.body.includes("LOGIN | BILLINGNESIA") || response.statusCode === 401) {
-        cookie = await getActiveSessionCookie(baseUrl, true);
+        cookie = await getActiveSessionCookie(baseUrl, true, userSessionCookie);
         response = await requestUrl(searchUrl, {
             headers: {
                 Cookie: cookie,
@@ -1204,7 +1254,8 @@ async function enrichCustomerTabData(
  */
 export async function scrapeBillingnesiaData(
     query: string,
-    specificCustomerId?: string
+    specificCustomerId?: string,
+    userSessionCookie?: string
 ): Promise<BillingnesiaScraperResult> {
     const cleanQuery = (specificCustomerId || query).trim();
     if (!cleanQuery) {
@@ -1218,7 +1269,7 @@ export async function scrapeBillingnesiaData(
     // 1. Jika query adalah Nama Pelanggan atau Daerah (bukan ID unik)
     if (!isTicket && !isDirectCustomerId) {
         try {
-            const candidates = await searchBillingnesiaCandidates(cleanQuery);
+            const candidates = await searchBillingnesiaCandidates(cleanQuery, userSessionCookie);
 
             if (candidates.length === 0) {
                 return {
@@ -1229,7 +1280,7 @@ export async function scrapeBillingnesiaData(
 
             // Jika hanya 1 kandidat persis, langsung ambil detail lengkapnya tanpa perlu memilih
             if (candidates.length === 1 && candidates[0]) {
-                return await scrapeBillingnesiaData(candidates[0].customer_id, candidates[0].customer_id);
+                return await scrapeBillingnesiaData(candidates[0].customer_id, candidates[0].customer_id, userSessionCookie);
             }
 
             // Jika ada beberapa kandidat (> 1), kembalikan daftar agar teknisi memilih 1 orang
@@ -1254,7 +1305,7 @@ export async function scrapeBillingnesiaData(
         : `${baseUrl.replace(/\/+$/, "")}/admin/data/detailpelanggan/${encodeURIComponent(cleanQuery)}`;
 
     try {
-        let cookie = await getActiveSessionCookie(baseUrl);
+        let cookie = await getActiveSessionCookie(baseUrl, false, userSessionCookie);
 
         let response = await requestUrl(targetUrl, {
             headers: { Cookie: cookie },
@@ -1263,7 +1314,7 @@ export async function scrapeBillingnesiaData(
         // Jika ter-redirect ke halaman login
         if (response.body.includes("LOGIN | BILLINGNESIA") || response.statusCode === 401) {
             console.log("[Scraper] Sesi Billingnesia kadaluarsa. Mengautentikasi ulang...");
-            cookie = await getActiveSessionCookie(baseUrl, true);
+            cookie = await getActiveSessionCookie(baseUrl, true, userSessionCookie);
 
             response = await requestUrl(targetUrl, {
                 headers: { Cookie: cookie },
@@ -1370,7 +1421,10 @@ export async function scrapeBillingnesiaData(
  * 1. Info Tiket dari: /admin/tiket/detailtiket/{ticket_id}
  * 2. Log Aktivitas dari endpoint AJAX: /admin/tiket/tableTiketDetailLog/{ticket_id}
  */
-export async function scrapeTicketDetail(ticketId: string): Promise<TicketDetailData> {
+export async function scrapeTicketDetail(
+    ticketId: string,
+    userSessionCookie?: string
+): Promise<TicketDetailData> {
     const cleanTicketId = ticketId.trim().toUpperCase();
     if (!cleanTicketId) {
         throw new Error("Nomor tiket tidak valid.");
@@ -1379,13 +1433,13 @@ export async function scrapeTicketDetail(ticketId: string): Promise<TicketDetail
     const baseUrl = process.env.BILLINGNESIA_BASE_URL || "https://billing.at-in.net";
     const detailUrl = `${baseUrl.replace(/\/+$/, "")}/admin/tiket/detailtiket/${encodeURIComponent(cleanTicketId)}`;
 
-    let cookie = await getActiveSessionCookie(baseUrl);
+    let cookie = await getActiveSessionCookie(baseUrl, false, userSessionCookie);
     let detailRes = await requestUrl(detailUrl, {
         headers: { Cookie: cookie },
     });
 
     if (detailRes.body.includes("LOGIN | BILLINGNESIA") || detailRes.statusCode === 401) {
-        cookie = await getActiveSessionCookie(baseUrl, true);
+        cookie = await getActiveSessionCookie(baseUrl, true, userSessionCookie);
         detailRes = await requestUrl(detailUrl, {
             headers: { Cookie: cookie },
         });
@@ -1574,6 +1628,7 @@ export async function scrapeWorkTicketsTable(options: {
     page?: number;
     perPage?: number;
     search?: string;
+    userSessionCookie?: string;
 } = {}): Promise<{
     tickets: ScrapedWorkTicket[];
     total: number;
@@ -1599,7 +1654,7 @@ export async function scrapeWorkTicketsTable(options: {
 
     const tableUrl = `${baseUrl.replace(/\/+$/, "")}/admin/tiket/tableTiket?${queryParams.toString()}`;
 
-    let cookie = await getActiveSessionCookie(baseUrl);
+    let cookie = await getActiveSessionCookie(baseUrl, false, options.userSessionCookie);
     let res = await requestUrl(tableUrl, {
         headers: {
             Cookie: cookie,
@@ -1608,7 +1663,7 @@ export async function scrapeWorkTicketsTable(options: {
     });
 
     if (res.body.includes("LOGIN | BILLINGNESIA") || res.statusCode === 401) {
-        cookie = await getActiveSessionCookie(baseUrl, true);
+        cookie = await getActiveSessionCookie(baseUrl, true, options.userSessionCookie);
         res = await requestUrl(tableUrl, {
             headers: {
                 Cookie: cookie,

@@ -18,7 +18,7 @@ import ImportDismantleModal from "@/components/dismantles/ImportDismantleModal";
 import InstallBookmarkletModal from "@/components/dismantles/InstallBookmarkletModal";
 import HandoverSummaryTable from "@/components/dismantles/HandoverSummaryTable";
 import CustomSelect, { SelectOption } from "@/components/ui/CustomSelect";
-import ToastNotification, { ToastItem } from "@/components/ui/ToastNotification";
+import { useSynerixUI } from "@/components/providers/SynerixUIProvider";
 import { syncDismantleToWorkLogs } from "@/lib/services/dismantleWorkLogSync";
 import {
     Truck,
@@ -98,17 +98,8 @@ export default function DismantlesPage() {
         }
     };
 
-    // Floating Toast Notifications state (non-blocking)
-    const [toasts, setToasts] = useState<ToastItem[]>([]);
-
-    const addToast = (item: Omit<ToastItem, "id">) => {
-        const id = crypto.randomUUID();
-        setToasts((prev) => [...prev, { ...item, id }]);
-    };
-
-    const removeToast = (id: string) => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
-    };
+    // Unified Synerix Notifications & Confirm UI
+    const { toast, snackbar, error: notifyError, confirm } = useSynerixUI();
 
     // Pagination state (Pilihan 10, 25, 50, 100 sesuai permintaan pengguna)
     const [currentPage, setCurrentPage] = useState(1);
@@ -153,7 +144,9 @@ export default function DismantlesPage() {
     // Ambil GPS Live Teknisi
     const handleGetLiveLocation = () => {
         if (!navigator.geolocation) {
-            alert("Perangkat Anda tidak mendukung fitur Geolocation.");
+            notifyError("Perangkat Anda tidak mendukung fitur Geolocation.", {
+                title: "GPS Tidak Didukung",
+            });
             return;
         }
 
@@ -164,9 +157,12 @@ export default function DismantlesPage() {
                     lng: pos.coords.longitude,
                 });
                 setLocationActive(true);
+                snackbar("success", "Lokasi GPS teknisi berhasil dikunci.");
             },
             (err) => {
-                alert("Gagal membaca GPS: " + err.message);
+                notifyError("Gagal membaca GPS: " + err.message, {
+                    title: "Akses GPS Gagal",
+                });
             },
             { enableHighAccuracy: true, timeout: 10000 }
         );
@@ -203,10 +199,8 @@ export default function DismantlesPage() {
         setTasks((prev) => prev.filter((t) => t.id !== taskId));
 
         // 2. Notifikasi Toast Mengambang dengan Opsi Urungkan (Undo)
-        addToast({
-            type: "success",
+        toast("success", `Tugas pelanggan ${task.customer_name} (${task.customer_id}) telah dihapus.`, {
             title: "Tugas Dismantle Dihapus",
-            message: `Tugas pelanggan ${task.customer_name} (${task.customer_id}) telah dihapus.`,
             actionLabel: "Urungkan",
             durationMs: 5000,
             onAction: async () => {
@@ -214,10 +208,8 @@ export default function DismantlesPage() {
                 try {
                     await supabase.from("dismantle_tasks").insert([task]);
                     setTasks((prev) => [task, ...prev]);
-                    addToast({
-                        type: "info",
+                    toast("info", `Tugas ${task.customer_name} berhasil dipulihkan.`, {
                         title: "Dibatalkan",
-                        message: `Tugas ${task.customer_name} berhasil dipulihkan.`,
                     });
                 } catch (e: any) {
                     console.error("Gagal mengurungkan:", e);
@@ -241,20 +233,16 @@ export default function DismantlesPage() {
                 if (!res.ok || !json.success) {
                     // Jika gagal hapus permanen karena RLS, kembalikan data dan beri notifikasi
                     setTasks((prev) => [task, ...prev]);
-                    addToast({
-                        type: "error",
+                    toast("error", "Izin RLS DELETE belum aktif di Supabase. Jalankan skrip fix_dismantle_delete_policy.sql di SQL Editor.", {
                         title: "Gagal Hapus dari Database",
-                        message: "Izin RLS DELETE belum aktif di Supabase. Jalankan skrip fix_dismantle_delete_policy.sql di SQL Editor.",
                         durationMs: 7000,
                     });
                 }
             }
         } catch (err: any) {
             setTasks((prev) => [task, ...prev]);
-            addToast({
-                type: "error",
+            toast("error", err?.message || "Terjadi kesalahan saat menghapus data.", {
                 title: "Gagal Menghapus Data",
-                message: err?.message || "Terjadi kesalahan saat menghapus data.",
             });
         }
     };
@@ -284,12 +272,7 @@ export default function DismantlesPage() {
             if (updatedTask.status !== "QUEUE") {
                 const syncResult = await syncDismantleToWorkLogs(updatedTask, supabase);
                 if (syncResult.synced) {
-                    addToast({
-                        type: "info",
-                        title: "Disinkronkan ke Pekerjaan",
-                        message: `Tugas ${updatedTask.customer_name} otomatis tercatat di modul Pekerjaan Lapangan.`,
-                        durationMs: 4000,
-                    });
+                    snackbar("info", `Tugas ${updatedTask.customer_name} otomatis tercatat di modul Pekerjaan Lapangan.`);
                 }
             }
         } catch (err) {
@@ -819,9 +802,6 @@ export default function DismantlesPage() {
                     onSaveStatus={handleSaveStatus}
                 />
             )}
-
-            {/* Toast Notification Mengambang (Non-Blocking) */}
-            <ToastNotification toasts={toasts} onDismiss={removeToast} />
         </main>
     );
 }

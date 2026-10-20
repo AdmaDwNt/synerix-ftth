@@ -3,6 +3,9 @@ import Image from "next/image";
 import "./globals.css";
 import Topbar from "@/components/layout/Topbar";
 
+import Footer from "@/components/layout/Footer";
+import { SynerixUIProvider } from "@/components/providers/SynerixUIProvider";
+
 export const metadata: Metadata = {
   title: {
     default: "Synerix FTTH - Network Operations Platform",
@@ -28,30 +31,13 @@ export default function RootLayout({
   return (
     <html lang="id">
       <body className="min-h-screen flex flex-col bg-synerix-bg text-synerix-text antialiased">
-        <Topbar />
-        <main className="flex-1 w-full flex flex-col">
-          {children}
-        </main>
-        <footer className="border-t border-synerix-border bg-white/80 backdrop-blur-xs py-4 mb-16 lg:mb-0 text-xs text-synerix-subtext">
-          <div className="w-full px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
-            <div>
-              <p className="font-semibold text-slate-700">FTTH Operations & Field Engineering Platform</p>
-              <p className="text-[11px] text-slate-400">Integrated Network Management System</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-slate-400">Developed & Powered by</span>
-              <div className="flex items-center px-2.5 py-1 rounded-lg bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-slate-800 shadow-2xs">
-                <Image
-                  src="/images/logo-synerix.png"
-                  alt="Synerix Technology Solution"
-                  width={95}
-                  height={22}
-                  className="h-4.5 w-auto object-contain brightness-105"
-                />
-              </div>
-            </div>
-          </div>
-        </footer>
+        <SynerixUIProvider>
+          <Topbar />
+          <main className="flex-1 w-full flex flex-col">
+            {children}
+          </main>
+          <Footer />
+        </SynerixUIProvider>
       </body>
     </html>
   );

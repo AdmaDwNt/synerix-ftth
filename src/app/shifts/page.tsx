@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import CustomSelect, { SelectOption } from "@/components/ui/CustomSelect";
+import { useSynerixUI } from "@/components/providers/SynerixUIProvider";
 
 interface ShiftRosterRow {
   id: string;
@@ -258,6 +259,7 @@ function generateMonthOptions(): SelectOption[] {
 
 export default function ShiftsPage() {
   const supabase = createClient();
+  const { toast, snackbar, error: notifyError, warning: notifyWarning, confirm } = useSynerixUI();
   const currentMonthYear = useMemo(() => getCurrentMonthYear(), []);
   const monthOptions = useMemo(() => generateMonthOptions(), []);
 
@@ -421,10 +423,16 @@ export default function ShiftsPage() {
 
   // Delete Row from Database & State
   const handleDeleteRoster = async (row: ShiftRosterRow) => {
-    const confirmDelete = window.confirm(
-      `Yakin ingin menghapus personel "${row.employee_name}" (${row.group_name}) dari jadwal ${row.month_year}?`
-    );
-    if (!confirmDelete) return;
+    const confirmed = await confirm({
+      title: "Hapus Personel Roster?",
+      description: `Apakah Anda yakin ingin menghapus data roster untuk personel ini dari sistem? Tindakan ini akan menghapus seluruh data jadwal pada bulan tersebut.`,
+      itemName: row.employee_name,
+      itemBadge: row.group_name,
+      itemMeta: row.month_year,
+      variant: "danger",
+      confirmText: "Hapus Roster",
+    });
+    if (!confirmed) return;
 
     try {
       const { error } = await supabase
@@ -445,9 +453,9 @@ export default function ShiftsPage() {
       }
 
       setRosterRows((prev) => prev.filter((r) => r.id !== row.id));
-      alert(`✅ Berhasil menghapus jadwal ${row.employee_name}.`);
+      snackbar("success", `Personel ${row.employee_name} berhasil dihapus dari jadwal.`);
     } catch (err: any) {
-      alert("Gagal menghapus jadwal: " + err.message);
+      notifyError("Gagal menghapus jadwal: " + err.message, { title: "Gagal Menghapus" });
     }
   };
 
@@ -495,7 +503,7 @@ export default function ShiftsPage() {
   const handleSaveManualRoster = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formEmployeeName.trim()) {
-      alert("Nama karyawan / personel wajib diisi.");
+      notifyWarning("Nama karyawan / personel wajib diisi.", { title: "Validasi Form" });
       return;
     }
 
@@ -528,7 +536,9 @@ export default function ShiftsPage() {
 
       if (error) {
         console.error("Gagal sinkron ke Supabase:", error);
-        alert(`Peringatan: Gagal menyimpan ke database Supabase (${error.message}). Jadwal tersimpan di sesi lokal.`);
+        notifyWarning(`Gagal menyimpan ke database Supabase (${error.message}). Jadwal tersimpan di sesi lokal.`, {
+          title: "Penyimpanan Lokal",
+        });
       } else {
         setDbStatus("CONNECTED");
       }
@@ -544,15 +554,15 @@ export default function ShiftsPage() {
               : item
           )
         );
-        alert(`✅ Berhasil memperbarui jadwal shift untuk ${payload.employee_name}`);
+        snackbar("success", `Jadwal shift untuk ${payload.employee_name} berhasil diperbarui.`);
       } else {
         setRosterRows((prev) => [payload, ...prev]);
-        alert(`✅ Berhasil menambahkan personel & jadwal baru untuk ${payload.employee_name}`);
+        snackbar("success", `Personel & jadwal baru untuk ${payload.employee_name} berhasil ditambahkan.`);
       }
 
       setIsManualModalOpen(false);
     } catch (err: any) {
-      alert("Gagal menyimpan jadwal: " + err.message);
+      notifyError("Gagal menyimpan jadwal: " + err.message, { title: "Gagal Menyimpan" });
     } finally {
       setSavingManual(false);
     }
@@ -627,7 +637,9 @@ export default function ShiftsPage() {
   const handleImportSpreadsheet = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!importPasteText.trim()) {
-      alert("Tempelkan (Paste) data dari Google Spreadsheet ke dalam kotak teks.");
+      notifyWarning("Tempelkan (Paste) data dari Google Spreadsheet ke dalam kotak teks.", {
+        title: "Teks Kosong",
+      });
       return;
     }
 
@@ -690,7 +702,9 @@ export default function ShiftsPage() {
           });
           if (error) {
             console.error("Gagal simpan import ke Supabase:", error);
-            alert(`Peringatan: Gagal menyimpan data impor ke database Supabase (${error.message}). Data ditampilkan di sesi lokal.`);
+            notifyWarning(`Gagal menyimpan data impor ke database Supabase (${error.message}). Data ditampilkan di sesi lokal.`, {
+              title: "Penyimpanan Lokal",
+            });
           } else {
             setDbStatus("CONNECTED");
           }
@@ -708,15 +722,19 @@ export default function ShiftsPage() {
         });
         setSelectedMonthYear(importMonth);
 
-        const groupLabel = targetGroup === "NAMA TEKNISI" ? "Teknis" : targetGroup === "NAMA NOC" ? "NOC" : "PSG";
-        alert(`✅ Berhasil mengimpor ${newParsedRows.length} personel grup ${groupLabel} untuk ${importMonth}!`);
+        const groupLabel = targetGroup === "NAMA TEKNISI" ? "Teknisi" : targetGroup === "NAMA NOC" ? "NOC" : "PSG";
+        toast("success", `Berhasil mengimpor ${newParsedRows.length} personel grup ${groupLabel} untuk ${importMonth}!`, {
+          title: "Impor Berhasil",
+        });
         setImportPasteText("");
         setIsImportModalOpen(false);
       } else {
-        alert("Format data tidak dikenali. Pastikan menyalin baris tabel langsung dari Google Spreadsheet.");
+        notifyWarning("Format data tidak dikenali. Pastikan menyalin baris tabel langsung dari Google Spreadsheet.", {
+          title: "Format Tidak Sesuai",
+        });
       }
     } catch (err: any) {
-      alert("Gagal memproses data spreadsheet: " + err.message);
+      notifyError("Gagal memproses data spreadsheet: " + err.message, { title: "Gagal Impor" });
     } finally {
       setImporting(false);
     }
@@ -726,7 +744,9 @@ export default function ShiftsPage() {
   const handleSubmitLeave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!startDate || !endDate || !reason.trim() || !leaveEmployeeName.trim()) {
-      alert("Nama personel, periode tanggal, dan alasan pengajuan wajib diisi.");
+      notifyWarning("Nama personel, periode tanggal, dan alasan pengajuan wajib diisi.", {
+        title: "Validasi Form",
+      });
       return;
     }
 
@@ -758,9 +778,9 @@ export default function ShiftsPage() {
       setStartDate("");
       setEndDate("");
       setReason("");
-      alert("✅ Pengajuan cuti / izin berhasil dikirim!");
+      snackbar("success", "Pengajuan cuti / izin berhasil dikirim!");
     } catch (err: any) {
-      alert("Gagal mengajukan cuti: " + err.message);
+      notifyError("Gagal mengajukan cuti: " + err.message, { title: "Gagal Mengajukan" });
     } finally {
       setSubmittingLeave(false);
     }
@@ -780,19 +800,28 @@ export default function ShiftsPage() {
       setLeaves((prev) =>
         prev.map((l) => (l.id === id ? { ...l, status: newStatus } : l))
       );
+      snackbar(newStatus === "APPROVED" ? "success" : "warning", `Status cuti diperbarui menjadi ${newStatus}.`);
     } catch (e: any) {
-      alert("Gagal update status cuti: " + e.message);
+      notifyError("Gagal update status cuti: " + e.message, { title: "Gagal Update" });
     }
   };
 
   // Delete Leave Ticket (CRUD Delete Leave)
   const handleDeleteLeave = async (id: string) => {
-    if (!window.confirm("Hapus tiket pengajuan cuti ini?")) return;
+    const confirmed = await confirm({
+      title: "Hapus Pengajuan Cuti?",
+      description: "Apakah Anda yakin ingin menghapus tiket pengajuan cuti ini secara permanen dari sistem?",
+      variant: "danger",
+      confirmText: "Hapus Tiket",
+    });
+    if (!confirmed) return;
+
     try {
       await supabase.from("shift_leave_requests").delete().eq("id", id);
       setLeaves((prev) => prev.filter((l) => l.id !== id));
+      snackbar("success", "Tiket pengajuan cuti berhasil dihapus.");
     } catch (e: any) {
-      alert("Gagal menghapus tiket cuti: " + e.message);
+      notifyError("Gagal menghapus tiket cuti: " + e.message, { title: "Gagal Menghapus" });
     }
   };
 

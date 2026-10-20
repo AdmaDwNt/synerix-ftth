@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Pencil, X, MapPin, Compass } from "lucide-react";
 import CustomSelect from "@/components/ui/CustomSelect";
+import { useSynerixUI } from "@/components/providers/SynerixUIProvider";
 
 export interface WorkLogItem {
     id: string;
@@ -17,6 +18,8 @@ export interface WorkLogItem {
     latitude: number | null;
     longitude: number | null;
     created_at: string;
+    user_id?: string | null;
+    created_by_username?: string | null;
 }
 
 interface EditWorkLogModalProps {
@@ -33,6 +36,7 @@ export default function EditWorkLogModal({
     onSuccess,
 }: EditWorkLogModalProps) {
     const supabase = createClient();
+    const { snackbar, warning: notifyWarning, error: notifyError } = useSynerixUI();
 
     const [title, setTitle] = useState("");
     const [category, setCategory] = useState<WorkLogItem["category"]>("MAINTENANCE_RETAIL");
@@ -64,7 +68,7 @@ export default function EditWorkLogModal({
 
     const handleGetCurrentLocation = () => {
         if (!navigator.geolocation) {
-            alert("Browser Anda tidak mendukung Geolocation.");
+            notifyWarning("Browser Anda tidak mendukung Geolocation.", { title: "GPS Tidak Didukung" });
             return;
         }
 
@@ -74,9 +78,10 @@ export default function EditWorkLogModal({
                 setLatitude(parseFloat(pos.coords.latitude.toFixed(6)));
                 setLongitude(parseFloat(pos.coords.longitude.toFixed(6)));
                 setGettingLocation(false);
+                snackbar("success", "Koordinat GPS berhasil diperbarui.");
             },
             (err) => {
-                alert("Gagal membaca GPS: " + err.message);
+                notifyError("Gagal membaca GPS: " + err.message, { title: "Akses GPS Gagal" });
                 setGettingLocation(false);
             },
             { enableHighAccuracy: true }
@@ -87,7 +92,7 @@ export default function EditWorkLogModal({
         e.preventDefault();
 
         if (!title.trim() || !caseDescription.trim()) {
-            alert("Judul pekerjaan dan deskripsi case wajib diisi!");
+            notifyWarning("Judul pekerjaan dan deskripsi case wajib diisi!", { title: "Validasi Form" });
             return;
         }
 
@@ -126,10 +131,13 @@ export default function EditWorkLogModal({
                 throw new Error(error.message);
             }
 
+            snackbar("success", "Perubahan catatan pekerjaan berhasil disimpan.");
             onSuccess(updated);
             onClose();
         } catch (err: unknown) {
-            alert("Gagal menyimpan perubahan: " + (err instanceof Error ? err.message : String(err)));
+            notifyError("Gagal menyimpan perubahan: " + (err instanceof Error ? err.message : String(err)), {
+                title: "Gagal Menyimpan",
+            });
         } finally {
             setSaving(false);
         }

@@ -16,7 +16,7 @@ import DataTablePagination from "@/components/layout/DataTablePagination";
 import EditWorkLogModal, { WorkLogItem } from "@/components/work-logs/EditWorkLogModal";
 import WorkLogSearchAddModal from "@/components/work-logs/WorkLogSearchAddModal";
 import CustomSelect from "@/components/ui/CustomSelect";
-import ToastNotification, { ToastItem } from "@/components/ui/ToastNotification";
+import SynerixNotify, { useNotify } from "@/components/ui/SynerixNotify";
 
 export default function WorkLogsPage() {
     const supabase = createClient();
@@ -27,16 +27,41 @@ export default function WorkLogsPage() {
     const [loading, setLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState("ALL");
-    const [toasts, setToasts] = useState<ToastItem[]>([]);
+    const notify = useNotify();
 
-    const addToast = (item: Omit<ToastItem, "id">) => {
-        const id = crypto.randomUUID();
-        setToasts((prev) => [...prev, { ...item, id }]);
-    };
+    // User Session & Data Isolation State
+    const [currentUser, setCurrentUser] = useState<{ id: string; username: string; full_name: string; role: string } | null>(null);
+    const [teamMembers, setTeamMembers] = useState<{ username: string; full_name: string }[]>([]);
+    const [memberFilter, setMemberFilter] = useState<string>("ALL");
 
-    const removeToast = (id: string) => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
-    };
+    // Ambil sesi user aktif dan daftar tim (khusus Superadmin)
+    useEffect(() => {
+        fetch("/api/auth/me")
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                if (data?.authenticated && data?.user) {
+                    setCurrentUser(data.user);
+                    if (data.user.role === "superadmin") {
+                        fetch("/api/admin/users")
+                            .then((r) => (r.ok ? r.json() : null))
+                            .then((uData) => {
+                                if (uData?.users) {
+                                    setTeamMembers(
+                                        uData.users.map((u: any) => ({
+                                            username: u.username,
+                                            full_name: u.full_name,
+                                        }))
+                                    );
+                                }
+                            })
+                            .catch(() => {});
+                    }
+                }
+            })
+            .catch(() => {});
+    }, []);
+
+
 
     // Shortcut '/' untuk fokus ke kotak pencarian
     useEffect(() => {
@@ -62,14 +87,30 @@ export default function WorkLogsPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(25);
 
-    // Fetch Data Pekerjaan murni dari Supabase
+    // Fetch Data Pekerjaan dari Supabase dengan Proteksi Data Isolation
     const fetchWorkLogs = async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase
+            let query = supabase
                 .from("work_logs")
                 .select("*")
                 .order("created_at", { ascending: false });
+
+            // ISOLASI DATA PER-USER:
+            // 1. Jika pengguna adalah teknisi biasa, batasi query HANYA data miliknya
+            if (currentUser && currentUser.role === "technician") {
+                query = query.or(`user_id.eq.${currentUser.id},created_by_username.eq.${currentUser.username}`);
+            }
+            // 2. Jika Superadmin memilih filter switcher anggota tertentu
+            else if (currentUser && currentUser.role === "superadmin") {
+                if (memberFilter === "ME") {
+                    query = query.or(`user_id.eq.${currentUser.id},created_by_username.eq.${currentUser.username}`);
+                } else if (memberFilter !== "ALL") {
+                    query = query.eq("created_by_username", memberFilter);
+                }
+            }
+
+            const { data, error } = await query;
 
             if (!error && data) {
                 setLogs(data as WorkLogItem[]);
@@ -83,7 +124,7 @@ export default function WorkLogsPage() {
 
     useEffect(() => {
         fetchWorkLogs();
-    }, []);
+    }, [currentUser, memberFilter]);
 
     // Reset pagination saat filter berubah
     useEffect(() => {
@@ -100,21 +141,15 @@ export default function WorkLogsPage() {
         setLogs((prev) => prev.filter((l) => l.id !== logId));
 
         // 2. Tampilkan Toast Notification mengambang dengan aksi Urungkan
-        addToast({
-            type: "success",
+        notify.toast("success", `Catatan "${log.title}" telah dihapus.`, {
             title: "Catatan Dihapus",
-            message: `Catatan "${log.title}" telah dihapus.`,
             actionLabel: "Urungkan",
             durationMs: 5000,
             onAction: async () => {
                 try {
                     await supabase.from("work_logs").insert([log]);
                     setLogs((prev) => [log, ...prev]);
-                    addToast({
-                        type: "info",
-                        title: "Dibatalkan",
-                        message: `Catatan "${log.title}" berhasil dipulihkan.`,
-                    });
+                    notify.snackbar("info", `Catatan "${log.title}" berhasil dipulihkan.`);
                 } catch (e: any) {
                     console.error("Gagal mengurungkan:", e);
                 }
@@ -126,18 +161,14 @@ export default function WorkLogsPage() {
             const { error } = await supabase.from("work_logs").delete().eq("id", logId);
             if (error) {
                 setLogs((prev) => [log, ...prev]);
-                addToast({
-                    type: "error",
+                notify.toast("error", error.message, {
                     title: "Gagal Menghapus dari Database",
-                    message: error.message,
                 });
             }
         } catch (err: unknown) {
             setLogs((prev) => [log, ...prev]);
-            addToast({
-                type: "error",
+            notify.toast("error", err instanceof Error ? err.message : String(err), {
                 title: "Error Tak Terduga",
-                message: err instanceof Error ? err.message : String(err),
             });
         }
     };
@@ -226,6 +257,56 @@ export default function WorkLogsPage() {
                             <span>Tambah Data</span>
                         </button>
                     </div>
+
+                    {/* SUPERADMIN STEALTH MEMBER SWITCHER (Hanya tampil untuk Superadmin) */}
+                    {currentUser?.role === "superadmin" && (
+                        <div className="px-4 py-2.5 bg-purple-50/70 border-b border-purple-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <div className="flex items-center gap-2 font-bold text-purple-900">
+                                <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+                                <span>Stealth Monitoring Filter:</span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setMemberFilter("ALL")}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                        memberFilter === "ALL"
+                                            ? "bg-purple-700 text-white shadow-2xs font-bold"
+                                            : "bg-white text-purple-800 border border-purple-200 hover:bg-purple-100"
+                                    }`}
+                                >
+                                    Semua Anggota
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setMemberFilter("ME")}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                        memberFilter === "ME"
+                                            ? "bg-purple-700 text-white shadow-2xs font-bold"
+                                            : "bg-white text-purple-800 border border-purple-200 hover:bg-purple-100"
+                                    }`}
+                                >
+                                    Hanya Saya (@{currentUser.username})
+                                </button>
+                                {teamMembers
+                                    .filter((m) => m.username !== currentUser?.username)
+                                    .map((m) => (
+                                        <button
+                                            key={m.username}
+                                            type="button"
+                                            onClick={() => setMemberFilter(m.username)}
+                                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                                memberFilter === m.username
+                                                    ? "bg-purple-700 text-white shadow-2xs font-bold"
+                                                    : "bg-white text-purple-800 border border-purple-200 hover:bg-purple-100"
+                                            }`}
+                                        >
+                                            @{m.username}
+                                        </button>
+                                    ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Table Controls Bar (Matching Image 1: Left = Tampilkan [25] data, Right = Category Filter + Search) */}
                     <div className="p-4 border-b border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -335,10 +416,8 @@ export default function WorkLogsPage() {
                 onClose={() => setIsCreateModalOpen(false)}
                 onSuccess={(newLog) => {
                     setLogs((prev) => [newLog, ...prev]);
-                    addToast({
-                        type: "success",
+                    notify.snackbar("success", `Catatan pekerjaan "${newLog.title}" berhasil ditambahkan ke riwayat.`, {
                         title: "Log Pekerjaan Disimpan",
-                        message: `Catatan pekerjaan "${newLog.title}" berhasil ditambahkan ke riwayat.`,
                         durationMs: 4000,
                     });
                 }}
@@ -352,8 +431,8 @@ export default function WorkLogsPage() {
                 onSuccess={handleEditSuccess}
             />
 
-            {/* Toast Notification Mengambang (Non-Blocking) */}
-            <ToastNotification toasts={toasts} onDismiss={removeToast} />
+            {/* Synerix Unified Notification (Toast + Snackbar + Banner) */}
+            <SynerixNotify items={notify.items} onDismiss={notify.dismiss} />
         </main>
     );
 }

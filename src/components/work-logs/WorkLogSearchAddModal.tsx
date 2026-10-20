@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
     Search,
     Loader2,
@@ -52,6 +52,18 @@ export default function WorkLogSearchAddModal({
 
     // 4. Selected Ticket (dari tab tiket pelanggan atau dari pencarian tiket langsung)
     const [selectedTicket, setSelectedTicket] = useState<CustomerTicketItem | null>(null);
+    const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
+
+    useEffect(() => {
+        fetch("/api/auth/me")
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                if (data?.authenticated && data?.user) {
+                    setCurrentUser(data.user);
+                }
+            })
+            .catch(() => {});
+    }, []);
 
     if (!isOpen) return null;
 
@@ -264,6 +276,8 @@ export default function WorkLogSearchAddModal({
                 latitude: scrapedData?.latitude || null,
                 longitude: scrapedData?.longitude || null,
                 created_at: new Date().toISOString(),
+                user_id: currentUser?.id || null,
+                created_by_username: currentUser?.username || null,
             };
 
             const { error } = await supabase.from("work_logs").insert([payload]);
