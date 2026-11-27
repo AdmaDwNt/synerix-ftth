@@ -37,7 +37,7 @@ export default function Footer() {
     }
 
     return (
-        <footer className="border-t border-synerix-border bg-white/80 backdrop-blur-xs py-4 mb-16 lg:mb-0 text-xs text-synerix-subtext">
+        <footer className="border-t border-synerix-border bg-white/80 backdrop-blur-xs pt-4 pb-20 lg:pb-6 text-xs text-synerix-subtext">
             <div className="w-full px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
                 <div>
                     <p className="font-semibold text-slate-700">FTTH Operations & Field Engineering Platform</p>

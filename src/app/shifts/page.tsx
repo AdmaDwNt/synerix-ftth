@@ -41,6 +41,15 @@ interface ShiftRosterRow {
   daily_shifts: Record<string, string>; // e.g. { "1": "SOC", "2": "LIBUR", "3": "PAGI", ... }
 }
 
+export function cleanEmployeeName(name?: string): string {
+  if (!name) return "";
+  return name
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/\[span_\d+\]\([^)]*\)/g, "")
+    .replace(/[`*_~]/g, "")
+    .trim();
+}
+
 interface LeaveRequest {
   id: string;
   requestType: "CUTI_TAHUNAN" | "TUKAR_SHIFT" | "IZIN_SAKIT";
@@ -1198,7 +1207,7 @@ export default function ShiftsPage() {
                         >
                           <div className="min-w-0">
                             <h4 className="font-bold text-xs text-slate-900 truncate">
-                              {emp.employee_name}
+                              {cleanEmployeeName(emp.employee_name)}
                             </h4>
                             <p className="text-[10px] text-slate-400 mt-0.5">
                               Tim Lapangan
@@ -1259,7 +1268,7 @@ export default function ShiftsPage() {
                         >
                           <div className="min-w-0">
                             <h4 className="font-bold text-xs text-slate-900 truncate">
-                              {emp.employee_name}
+                              {cleanEmployeeName(emp.employee_name)}
                             </h4>
                             <p className="text-[10px] text-slate-400 mt-0.5">
                               Network Operations
@@ -1320,7 +1329,7 @@ export default function ShiftsPage() {
                         >
                           <div className="min-w-0">
                             <h4 className="font-bold text-xs text-slate-900 truncate">
-                              {emp.employee_name}
+                              {cleanEmployeeName(emp.employee_name)}
                             </h4>
                             <p className="text-[10px] text-slate-400 mt-0.5">
                               Siswa Magang / PKL
@@ -1442,7 +1451,7 @@ export default function ShiftsPage() {
                             {idx + 1}
                           </td>
                           <td className="sticky left-[36px] z-10 bg-white group-hover:bg-slate-50 py-2 px-2 sm:px-3 border-r border-slate-200 text-left font-bold text-slate-900 truncate w-32 min-w-[125px] max-w-[125px] sm:w-48 sm:min-w-[180px] sm:max-w-[180px] shadow-[2px_0_4px_rgba(0,0,0,0.06)]">
-                            {emp.employee_name}
+                            {cleanEmployeeName(emp.employee_name)}
                           </td>
                           {daysArray.map((d) => {
                             const shiftCode = emp.daily_shifts[String(d)] || "LIBUR";
@@ -1499,7 +1508,7 @@ export default function ShiftsPage() {
                             {idx + 1}
                           </td>
                           <td className="sticky left-[36px] z-10 bg-white group-hover:bg-slate-50 py-2 px-2 sm:px-3 border-r border-slate-200 text-left font-bold text-slate-900 truncate w-32 min-w-[125px] max-w-[125px] sm:w-48 sm:min-w-[180px] sm:max-w-[180px] shadow-[2px_0_4px_rgba(0,0,0,0.06)]">
-                            {emp.employee_name}
+                            {cleanEmployeeName(emp.employee_name)}
                           </td>
                           {daysArray.map((d) => {
                             const shiftCode = emp.daily_shifts[String(d)] || "LIBUR";
@@ -1556,7 +1565,7 @@ export default function ShiftsPage() {
                             {idx + 1}
                           </td>
                           <td className="sticky left-[36px] z-10 bg-white group-hover:bg-slate-50 py-2 px-2 sm:px-3 border-r border-slate-200 text-left font-bold text-slate-900 truncate w-32 min-w-[125px] max-w-[125px] sm:w-48 sm:min-w-[180px] sm:max-w-[180px] shadow-[2px_0_4px_rgba(0,0,0,0.06)]">
-                            {emp.employee_name}
+                            {cleanEmployeeName(emp.employee_name)}
                           </td>
                           {daysArray.map((d) => {
                             const shiftCode = emp.daily_shifts[String(d)] || "LIBUR";

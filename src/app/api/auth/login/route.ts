@@ -21,6 +21,14 @@ import {
     recordStealthAuditLog,
     UserRole,
 } from "@/lib/auth/session";
+import {
+    checkLoginSecurity,
+    recordLoginFailure,
+    recordLoginSuccess,
+    verifyServerCaptcha,
+    verifyTwoFactorOtp,
+} from "@/lib/services/loginSecurityService";
+import { logStealthAudit } from "@/lib/services/auditLogService";
 
 // ----------------------------------------------------------------------------
 // BAGIAN 2: DEFINISI TIPE & INTERFACE (TYPESCRIPT CONTRACT)
@@ -28,6 +36,9 @@ import {
 interface LoginRequestBody {
     username?: string;
     password?: string;
+    captchaAnswer?: string;
+    expectedCaptcha?: string;
+    twoFactorOtp?: string;
 }
 
 // ----------------------------------------------------------------------------
@@ -47,6 +58,61 @@ export async function POST(req: NextRequest) {
         const body: LoginRequestBody = await req.json();
         const rawUsername = (body.username || "").trim();
         const rawPassword = (body.password || "").trim();
+        const ipAddress = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "127.0.0.1";
+        const userAgent = req.headers.get("user-agent") || "unknown";
+
+        // 1. Pemeriksaan Keamanan Berlapis (IP Blocked, Rate Limit 429, Progressive Lockout)
+        const securityStatus = await checkLoginSecurity(rawUsername, ipAddress);
+
+        if (securityStatus.isBlockedIp) {
+            await logStealthAudit({
+                username: rawUsername || "UNKNOWN",
+                action_type: "BLOCKED_IP_ATTEMPT",
+                category: "BOT_INTRUSION",
+                risk_level: "CRITICAL",
+                details: { ipAddress, userAgent, reason: securityStatus.errorMessage },
+                ip_address: ipAddress,
+                user_agent: userAgent,
+            });
+            return NextResponse.json(
+                { success: false, error: securityStatus.errorMessage },
+                { status: 403 }
+            );
+        }
+
+        if (securityStatus.isRateLimited) {
+            await logStealthAudit({
+                username: rawUsername || "UNKNOWN",
+                action_type: "RATE_LIMIT_EXCEEDED_429",
+                category: "BOT_INTRUSION",
+                risk_level: "WARNING",
+                details: { ipAddress, userAgent },
+                ip_address: ipAddress,
+                user_agent: userAgent,
+            });
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "Terlalu banyak percobaan login. Batas maksimal 5x per menit.",
+                    rateLimited: true,
+                },
+                { status: 429 }
+            );
+        }
+
+        if (securityStatus.isLockedOut) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: securityStatus.errorMessage,
+                    lockedOut: true,
+                    remainingSeconds: securityStatus.remainingLockoutSeconds,
+                    requiresCaptcha: true,
+                    requires2fa: true,
+                },
+                { status: 423 }
+            );
+        }
 
         if (!rawUsername || !rawPassword) {
             return NextResponse.json(
@@ -55,11 +121,45 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const normalizedUsername = rawUsername.toLowerCase();
-        const ipAddress = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "127.0.0.1";
-        const userAgent = req.headers.get("user-agent") || "unknown";
+        // 2. Verifikasi CAPTCHA & 2FA jika diwajibkan (Percobaan ke-3 dan seterusnya)
+        if (securityStatus.requiresCaptcha) {
+            const isCaptchaValid = verifyServerCaptcha(
+                body.captchaAnswer || "",
+                body.expectedCaptcha || ""
+            );
+            if (!isCaptchaValid) {
+                await recordLoginFailure(rawUsername, ipAddress);
+                return NextResponse.json(
+                    {
+                        success: false,
+                        error: "Kode verifikasi CAPTCHA tidak cocok. Silakan coba lagi.",
+                        requiresCaptcha: true,
+                        requires2fa: securityStatus.requires2fa,
+                    },
+                    { status: 400 }
+                );
+            }
+        }
 
-        // 1. Verifikasi kredensial langsung ke Billingnesia
+        if (securityStatus.requires2fa) {
+            const is2faValid = verifyTwoFactorOtp(body.twoFactorOtp || "");
+            if (!is2faValid) {
+                await recordLoginFailure(rawUsername, ipAddress);
+                return NextResponse.json(
+                    {
+                        success: false,
+                        error: "Kode Verifikasi Dua Langkah (2FA / OTP) tidak valid.",
+                        requiresCaptcha: true,
+                        requires2fa: true,
+                    },
+                    { status: 401 }
+                );
+            }
+        }
+
+        const normalizedUsername = rawUsername.toLowerCase();
+
+        // 3. Verifikasi kredensial langsung ke Billingnesia
         let sessionCookie: string;
         let responseBody = "";
 
@@ -68,14 +168,40 @@ export async function POST(req: NextRequest) {
             sessionCookie = loginResult.sessionCookie;
             responseBody = loginResult.body;
         } catch (authErr) {
+            // Catat kegagalan & update progressive lockout
+            const failureInfo = await recordLoginFailure(normalizedUsername, ipAddress);
+
+            await logStealthAudit({
+                username: normalizedUsername,
+                action_type: "LOGIN_FAILED",
+                category: "AUTH_SESSION",
+                risk_level: failureInfo.failedCount >= 3 ? "WARNING" : "INFO",
+                details: {
+                    failed_count: failureInfo.failedCount,
+                    lockout_minutes: failureInfo.lockoutMinutes,
+                    ipAddress,
+                    userAgent,
+                },
+                ip_address: ipAddress,
+                user_agent: userAgent,
+            });
+
+            // Anti Account Enumeration: Pesan seragam "Email atau password salah."
             return NextResponse.json(
                 {
                     success: false,
-                    error: authErr instanceof Error ? authErr.message : "Username atau password Billingnesia tidak valid.",
+                    error: "Email atau password salah.",
+                    failedCount: failureInfo.failedCount,
+                    lockoutMinutes: failureInfo.lockoutMinutes,
+                    requiresCaptcha: failureInfo.failedCount >= 2,
+                    requires2fa: failureInfo.failedCount >= 2,
                 },
                 { status: 401 }
             );
         }
+
+        // Login Berhasil -> Reset security failure counter
+        await recordLoginSuccess(normalizedUsername, ipAddress);
 
         const supabase = getSupabaseServerClient();
 

@@ -17,6 +17,7 @@ import EditDismantleModal from "@/components/dismantles/EditDismantleModal";
 import ImportDismantleModal from "@/components/dismantles/ImportDismantleModal";
 import InstallBookmarkletModal from "@/components/dismantles/InstallBookmarkletModal";
 import HandoverSummaryTable from "@/components/dismantles/HandoverSummaryTable";
+import DismantleDetailedList from "@/components/dismantles/DismantleDetailedList";
 import CustomSelect, { SelectOption } from "@/components/ui/CustomSelect";
 import { useSynerixUI } from "@/components/providers/SynerixUIProvider";
 import { syncDismantleToWorkLogs } from "@/lib/services/dismantleWorkLogSync";
@@ -56,6 +57,7 @@ export default function DismantlesPage() {
     const searchInputRef = useRef<HTMLInputElement>(null);
     const [tasks, setTasks] = useState<DismantleTask[]>([]);
     const [activeTab, setActiveTab] = useState<"LIST" | "MAP" | "HANDOVER">("LIST");
+    const [viewMode, setViewMode] = useState<"compact" | "detailed">("compact");
     const [loading, setLoading] = useState(true);
 
     // Filter states
@@ -491,7 +493,7 @@ export default function DismantlesPage() {
                                                 <span className="text-emerald-500 font-black">●</span> &le; 2 jam
                                             </span>
                                             <span className="flex items-center gap-1">
-                                                <span className="text-amber-500 font-black">●</span> 2-9 jam
+                                                <span className="text-amber-500 font-black">●</span> 2-8 jam
                                             </span>
                                             <span className="flex items-center gap-1">
                                                 <span className="text-rose-500 font-black">●</span> &gt; 8 jam
@@ -502,6 +504,32 @@ export default function DismantlesPage() {
 
                                 {/* Header Right: + Tambah Data, Import, & Bookmarklet HP */}
                                 <div className="flex items-center gap-2 flex-wrap">
+                                    {/* View Mode Toggle: Tabel vs Detail */}
+                                    <div className="flex items-center rounded-xl bg-slate-200/70 p-0.5 border border-slate-200">
+                                        <button
+                                            type="button"
+                                            onClick={() => setViewMode("compact")}
+                                            className={`px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                                                viewMode === "compact"
+                                                    ? "bg-white text-teal-800 shadow-2xs"
+                                                    : "text-slate-600 hover:text-slate-900"
+                                            }`}
+                                        >
+                                            Tabel Kompak
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setViewMode("detailed")}
+                                            className={`px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                                                viewMode === "detailed"
+                                                    ? "bg-white text-teal-800 shadow-2xs"
+                                                    : "text-slate-600 hover:text-slate-900"
+                                            }`}
+                                        >
+                                            Daftar Detail (Smart Copy)
+                                        </button>
+                                    </div>
+
                                     <button
                                         type="button"
                                         onClick={() => setIsBookmarkletModalOpen(true)}
@@ -677,33 +705,60 @@ export default function DismantlesPage() {
 
                                 {!loading && processedTasks.length > 0 && (
                                     <>
-                                        {/* Desktop Table View (hidden on mobile, visible on md and up) */}
-                                        <div className="hidden md:block">
-                                            <DismantleTable
-                                                tasks={paginatedTasks}
-                                                startIndex={(currentPage - 1) * pageSize + 1}
-                                                onOpenStatusModal={(t) => setActiveTaskForModal(t)}
-                                                onOpenEditModal={(t) => setActiveTaskForEdit(t)}
-                                                onDeleteTask={handleDirectDelete}
-                                                onOpenCustomerDetail={handleOpenCustomerDetail}
+                                        {viewMode === "detailed" ? (
+                                            <DismantleDetailedList
+                                                items={paginatedTasks.map((t) => ({
+                                                    id: t.id,
+                                                    ticket_no: t.ticket_id || undefined,
+                                                    customer_id: t.customer_id,
+                                                    customer_name: t.customer_name,
+                                                    address: t.address,
+                                                    phone: t.phone_number || undefined,
+                                                    status: t.status,
+                                                    scheduled_date: t.created_at ? new Date(t.created_at).toLocaleDateString("id-ID") : undefined,
+                                                    assigned_technician: t.technician_name || undefined,
+                                                    notes: t.failure_reason || undefined,
+                                                }))}
+                                                onSelectStatus={(id) => {
+                                                    const found = tasks.find((x) => x.id === id);
+                                                    if (found) setActiveTaskForModal(found);
+                                                }}
+                                                onEdit={(item) => {
+                                                    const found = tasks.find((x) => x.id === item.id);
+                                                    if (found) setActiveTaskForEdit(found);
+                                                }}
                                             />
-                                        </div>
-
-                                        {/* Mobile Card View (visible on mobile, hidden on md and up) */}
-                                        <div className="block md:hidden">
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                                                {paginatedTasks.map((task) => (
-                                                    <DismantleCard
-                                                        key={task.id}
-                                                        task={task}
+                                        ) : (
+                                            <>
+                                                {/* Desktop Table View (hidden on mobile, visible on md and up) */}
+                                                <div className="hidden md:block">
+                                                    <DismantleTable
+                                                        tasks={paginatedTasks}
+                                                        startIndex={(currentPage - 1) * pageSize + 1}
                                                         onOpenStatusModal={(t) => setActiveTaskForModal(t)}
                                                         onOpenEditModal={(t) => setActiveTaskForEdit(t)}
                                                         onDeleteTask={handleDirectDelete}
                                                         onOpenCustomerDetail={handleOpenCustomerDetail}
                                                     />
-                                                ))}
-                                            </div>
-                                        </div>
+                                                </div>
+
+                                                {/* Mobile Card View (visible on mobile, hidden on md and up) */}
+                                                <div className="block md:hidden">
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                                        {paginatedTasks.map((task) => (
+                                                            <DismantleCard
+                                                                key={task.id}
+                                                                task={task}
+                                                                onOpenStatusModal={(t) => setActiveTaskForModal(t)}
+                                                                onOpenEditModal={(t) => setActiveTaskForEdit(t)}
+                                                                onDeleteTask={handleDirectDelete}
+                                                                onOpenCustomerDetail={handleOpenCustomerDetail}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
 
                                         {/* Pagination Footer Component (Matching Image 1 & Image 2) */}
                                         <DataTablePagination

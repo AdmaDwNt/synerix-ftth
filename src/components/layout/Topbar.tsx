@@ -33,7 +33,15 @@ import {
     Users,
     FileText,
     ChevronDown,
+    Sparkles,
+    FileSpreadsheet,
+    History,
+    MessageSquare,
+    Wifi,
+    Settings,
 } from "lucide-react";
+import WhatsAppTemplateModal from "@/components/noc/WhatsAppTemplateModal";
+import WifiGuideModal from "@/components/noc/WifiGuideModal";
 
 // ----------------------------------------------------------------------------
 // BAGIAN 2: DEFINISI TIPE & INTERFACE (TYPESCRIPT CONTRACT)
@@ -49,13 +57,14 @@ interface ActiveUser {
 // ----------------------------------------------------------------------------
 // BAGIAN 3: KONSTANTA & KONFIGURASI
 // ----------------------------------------------------------------------------
-const baseNavigation = [
+const primaryNavBefore = [
     { name: "Overview", href: "/", icon: Activity },
     { name: "Pekerjaan", href: "/work-logs", icon: Wrench },
     { name: "Mapping GIS", href: "/mapping", icon: MapPin },
     { name: "Dismantle", href: "/dismantles", icon: Truck },
-    { name: "Shift & Cuti", href: "/shifts", icon: Calendar },
-    { name: "Lembur", href: "/overtime", icon: Clock },
+];
+
+const primaryNavAfter = [
     { name: "Guide Core", href: "/core-guide", icon: Layers },
 ];
 
@@ -75,13 +84,21 @@ export default function Topbar() {
 
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+    const [shiftDropdownOpen, setShiftDropdownOpen] = useState(false);
+    const [layananDropdownOpen, setLayananDropdownOpen] = useState(false);
+    const [isWaModalOpen, setIsWaModalOpen] = useState(false);
+    const [isWifiModalOpen, setIsWifiModalOpen] = useState(false);
     const [currentUser, setCurrentUser] = useState<ActiveUser | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const shiftDropdownRef = useRef<HTMLDivElement>(null);
+    const layananDropdownRef = useRef<HTMLDivElement>(null);
 
     // Ambil data user aktif saat navigasi berubah
     useEffect(() => {
         setMobileMenuOpen(false);
         setUserDropdownOpen(false);
+        setShiftDropdownOpen(false);
+        setLayananDropdownOpen(false);
 
         if (pathname === "/login") return;
 
@@ -100,6 +117,12 @@ export default function Topbar() {
         function handleClickOutside(e: MouseEvent) {
             if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
                 setUserDropdownOpen(false);
+            }
+            if (shiftDropdownRef.current && !shiftDropdownRef.current.contains(e.target as Node)) {
+                setShiftDropdownOpen(false);
+            }
+            if (layananDropdownRef.current && !layananDropdownRef.current.contains(e.target as Node)) {
+                setLayananDropdownOpen(false);
             }
         }
         document.addEventListener("mousedown", handleClickOutside);
@@ -138,10 +161,7 @@ export default function Topbar() {
         return null;
     }
 
-    // Navigasi dinamis: tambahkan menu Manajemen User jika Superadmin
-    const navigation = currentUser?.role === "superadmin"
-        ? [...baseNavigation, { name: "Kelola User", href: "/admin/users", icon: Users }]
-        : baseNavigation;
+    const isShiftActive = pathname === "/shifts" || pathname === "/overtime";
 
     const initials = currentUser?.full_name
         ? currentUser.full_name
@@ -197,7 +217,7 @@ export default function Topbar() {
 
                         {/* Section Tengah: Navigasi Desktop Menu Links */}
                         <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1">
-                            {navigation.map((item) => {
+                            {primaryNavBefore.map((item) => {
                                 const Icon = item.icon;
                                 const isActive = pathname === item.href;
                                 return (
@@ -219,10 +239,182 @@ export default function Topbar() {
                                     </Link>
                                 );
                             })}
+
+                            {/* Dropdown Menu Gabungan: Shift & Lembur */}
+                            <div className="relative" ref={shiftDropdownRef}>
+                                <button
+                                    type="button"
+                                    onClick={() => setShiftDropdownOpen(!shiftDropdownOpen)}
+                                    className={`flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
+                                        shiftDropdownOpen || isShiftActive
+                                            ? "bg-teal-50 text-teal-800 border border-teal-200/90 shadow-2xs font-bold"
+                                                : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                                    }`}
+                                >
+                                    <Calendar className={`w-3.5 h-3.5 ${isShiftActive ? "text-teal-700" : "text-slate-400"}`} />
+                                    <span>Shift &amp; Lembur</span>
+                                    <ChevronDown className="w-3 h-3 text-slate-400" />
+                                </button>
+
+                                {shiftDropdownOpen && (
+                                    <div className="absolute left-0 mt-2 w-60 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-1">
+                                        <div className="px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                            Manajemen Jadwal &amp; Jam Kerja
+                                        </div>
+                                        <Link
+                                            href="/shifts"
+                                            onClick={() => setShiftDropdownOpen(false)}
+                                            className={`flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold transition-colors ${
+                                                pathname === "/shifts"
+                                                    ? "bg-teal-50 text-teal-800 font-bold"
+                                                    : "text-slate-700 hover:bg-slate-50 hover:text-teal-700"
+                                            }`}
+                                        >
+                                            <Calendar className="w-4 h-4 text-teal-600 shrink-0" />
+                                            <div>
+                                                <div>Shift &amp; Cuti</div>
+                                                <div className="text-[10px] font-normal text-slate-400">Jadwal giliran kerja &amp; cuti teknisi</div>
+                                            </div>
+                                        </Link>
+                                        <Link
+                                            href="/overtime"
+                                            onClick={() => setShiftDropdownOpen(false)}
+                                            className={`flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold transition-colors ${
+                                                pathname === "/overtime"
+                                                    ? "bg-teal-50 text-teal-800 font-bold"
+                                                    : "text-slate-700 hover:bg-slate-50 hover:text-teal-700"
+                                            }`}
+                                        >
+                                            <Clock className="w-4 h-4 text-teal-600 shrink-0" />
+                                            <div>
+                                                <div>Lembur (Overtime)</div>
+                                                <div className="text-[10px] font-normal text-slate-400">Pengajuan tugas lembur &amp; rekap</div>
+                                            </div>
+                                        </Link>
+                                    </div>
+                                )}
+                            </div>
+
+                            {primaryNavAfter.map((item) => {
+                                const Icon = item.icon;
+                                const isActive = pathname === item.href;
+                                return (
+                                    <Link
+                                        key={item.name}
+                                        href={item.href}
+                                        className={`flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
+                                            isActive
+                                                ? "bg-teal-50 text-teal-800 border border-teal-200/90 shadow-2xs font-bold"
+                                                : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                                        }`}
+                                    >
+                                        <Icon
+                                            className={`w-3.5 h-3.5 ${
+                                                isActive ? "text-teal-700" : "text-slate-400 group-hover:text-slate-600"
+                                            }`}
+                                        />
+                                        <span>{item.name}</span>
+                                    </Link>
+                                );
+                            })}
+
+                            {/* Dropdown Menu Layanan (Modul Tambahan / Beta) */}
+                            <div className="relative" ref={layananDropdownRef}>
+                                <button
+                                    type="button"
+                                    onClick={() => setLayananDropdownOpen(!layananDropdownOpen)}
+                                    className={`flex items-center gap-1 px-2.5 xl:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
+                                        layananDropdownOpen || pathname.startsWith("/notes") || pathname.startsWith("/tickets")
+                                            ? "bg-teal-50 text-teal-800 border border-teal-200/90 shadow-2xs font-bold"
+                                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                                    }`}
+                                >
+                                    <Sparkles className="w-3.5 h-3.5 text-teal-600" />
+                                    <span>Layanan</span>
+                                    <ChevronDown className="w-3 h-3 text-slate-400" />
+                                </button>
+
+                                {layananDropdownOpen && (
+                                    <div className="absolute left-0 mt-2 w-64 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-1">
+                                        <div className="px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                            Layanan NOC &amp; Operasional
+                                        </div>
+                                        <Link
+                                            href="/notes"
+                                            onClick={() => setLayananDropdownOpen(false)}
+                                            className="flex items-center justify-between px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-teal-700"
+                                        >
+                                            <div className="flex items-center gap-2.5">
+                                                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                                                <span>Catatan Sheet NOC</span>
+                                            </div>
+                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-800">
+                                                BETA
+                                            </span>
+                                        </Link>
+                                        <Link
+                                            href="/tickets/history"
+                                            onClick={() => setLayananDropdownOpen(false)}
+                                            className="flex items-center justify-between px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-teal-700"
+                                        >
+                                            <div className="flex items-center gap-2.5">
+                                                <History className="w-3.5 h-3.5 text-teal-600" />
+                                                <span>Riwayat Tiket Shift</span>
+                                            </div>
+                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-800">
+                                                BETA
+                                            </span>
+                                        </Link>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setLayananDropdownOpen(false);
+                                                setIsWaModalOpen(true);
+                                            }}
+                                            className="w-full text-left flex items-center justify-between px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-teal-700 cursor-pointer"
+                                        >
+                                            <div className="flex items-center gap-2.5">
+                                                <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                                                <span>Template Chat WA</span>
+                                            </div>
+                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-800">
+                                                BETA
+                                            </span>
+                                        </button>
+
+                                        <div className="my-1.5 border-t border-slate-100" />
+
+                                        <div className="px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                            Edukasi Pelanggan
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setLayananDropdownOpen(false);
+                                                setIsWifiModalOpen(true);
+                                            }}
+                                            className="w-full text-left flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-teal-700 cursor-pointer"
+                                        >
+                                            <Wifi className="w-3.5 h-3.5 text-teal-600" />
+                                            <span>Panduan Wi-Fi Modem</span>
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </nav>
 
                         {/* Section Kanan: Status Teknisi & User Profile Menu */}
                         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                            {/* Tombol Cepat Template WA (Desktop) */}
+                            <button
+                                type="button"
+                                onClick={() => setIsWaModalOpen(true)}
+                                className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 hover:bg-teal-50 border border-slate-200/80 hover:border-teal-200 text-[11px] font-semibold text-slate-700 hover:text-teal-800 transition-colors shadow-2xs cursor-pointer"
+                                title="Buka Template Pesan WhatsApp"
+                            >
+                                <MessageSquare className="w-3.5 h-3.5 text-teal-600" />
+                                <span>Template WA</span>
+                            </button>
                             {/* Role Badge (Desktop) */}
                             <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-200/80 text-[11px] font-semibold text-slate-700 shadow-2xs">
                                 <span className="relative flex h-2 w-2">
@@ -276,6 +468,14 @@ export default function Topbar() {
                                         {/* Menu Links Khusus Superadmin */}
                                         {currentUser?.role === "superadmin" && (
                                             <div className="py-1">
+                                                <Link
+                                                    href="/settings"
+                                                    onClick={() => setUserDropdownOpen(false)}
+                                                    className="flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-teal-700 transition-colors"
+                                                >
+                                                    <Settings className="w-4 h-4 text-slate-400" />
+                                                    <span>Pengaturan &amp; Scraper</span>
+                                                </Link>
                                                 <Link
                                                     href="/admin/users"
                                                     onClick={() => setUserDropdownOpen(false)}
@@ -358,7 +558,7 @@ export default function Topbar() {
 
                             {/* Menu Links */}
                             <div className="space-y-1">
-                                {navigation.map((item) => {
+                                {[...primaryNavBefore, ...primaryNavAfter].map((item) => {
                                     const Icon = item.icon;
                                     const isActive = pathname === item.href;
                                     return (
@@ -380,6 +580,118 @@ export default function Topbar() {
                                         </Link>
                                     );
                                 })}
+
+                                <div className="pt-2 border-t border-slate-100">
+                                    <p className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                        Shift &amp; Lembur
+                                    </p>
+                                    <Link
+                                        href="/shifts"
+                                        onClick={() => setMobileMenuOpen(false)}
+                                        className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                                            pathname === "/shifts"
+                                                ? "bg-teal-50 text-teal-800 border border-teal-200/90 font-bold"
+                                                : "text-slate-700 hover:bg-slate-50"
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <Calendar className="w-4 h-4 text-teal-600" />
+                                            <span>Shift &amp; Cuti</span>
+                                        </div>
+                                        {pathname === "/shifts" && <span className="w-2 h-2 rounded-full bg-teal-600" />}
+                                    </Link>
+                                    <Link
+                                        href="/overtime"
+                                        onClick={() => setMobileMenuOpen(false)}
+                                        className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                                            pathname === "/overtime"
+                                                ? "bg-teal-50 text-teal-800 border border-teal-200/90 font-bold"
+                                                : "text-slate-700 hover:bg-slate-50"
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <Clock className="w-4 h-4 text-teal-600" />
+                                            <span>Lembur (Overtime)</span>
+                                        </div>
+                                        {pathname === "/overtime" && <span className="w-2 h-2 rounded-full bg-teal-600" />}
+                                    </Link>
+                                </div>
+
+                                <div className="pt-2 border-t border-slate-100">
+                                    <p className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                        Layanan Tambahan
+                                    </p>
+                                    <Link
+                                        href="/notes"
+                                        onClick={() => setMobileMenuOpen(false)}
+                                        className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                                        <span>Catatan Sheet NOC (BETA)</span>
+                                    </Link>
+                                    <Link
+                                        href="/tickets/history"
+                                        onClick={() => setMobileMenuOpen(false)}
+                                        className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                        <History className="w-4 h-4 text-teal-600" />
+                                        <span>Riwayat Tiket Shift (BETA)</span>
+                                    </Link>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setMobileMenuOpen(false);
+                                            setIsWaModalOpen(true);
+                                        }}
+                                        className="w-full text-left flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                                    >
+                                        <MessageSquare className="w-4 h-4 text-emerald-600" />
+                                        <span>Template Chat WA (BETA)</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setMobileMenuOpen(false);
+                                            setIsWifiModalOpen(true);
+                                        }}
+                                        className="w-full text-left flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                                    >
+                                        <Wifi className="w-4 h-4 text-teal-600" />
+                                        <span>Panduan Wi-Fi Modem</span>
+                                    </button>
+                                </div>
+
+                                {currentUser?.role === "superadmin" && (
+                                    <div className="pt-2 border-t border-slate-100">
+                                        <p className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                            Superadmin
+                                        </p>
+                                        <Link
+                                            href="/settings"
+                                            onClick={() => setMobileMenuOpen(false)}
+                                            className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                        >
+                                            <Settings className="w-4 h-4 text-slate-500" />
+                                            <span>Pengaturan &amp; Scraper</span>
+                                        </Link>
+                                        <Link
+                                            href="/admin/users"
+                                            onClick={() => setMobileMenuOpen(false)}
+                                            className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                        >
+                                            <Users className="w-4 h-4 text-slate-500" />
+                                            <span>Manajemen Pengguna</span>
+                                        </Link>
+                                        <Link
+                                            href="/admin/audit-logs"
+                                            onClick={() => setMobileMenuOpen(false)}
+                                            className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                        >
+                                            <FileText className="w-4 h-4 text-slate-500" />
+                                            <span>Stealth Audit Log</span>
+                                        </Link>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-400 text-center">
@@ -420,6 +732,10 @@ export default function Topbar() {
                     </button>
                 </div>
             </div>
+
+            {/* Global Modals */}
+            <WhatsAppTemplateModal isOpen={isWaModalOpen} onClose={() => setIsWaModalOpen(false)} />
+            <WifiGuideModal isOpen={isWifiModalOpen} onClose={() => setIsWifiModalOpen(false)} />
         </>
     );
 }

@@ -6,6 +6,16 @@
 import https from "node:https";
 import http from "node:http";
 import { URL } from "node:url";
+import { getActiveScraperConfig } from "@/lib/services/scraperConfigService";
+
+export async function resolveBillingnesiaBaseUrl(customUrl?: string): Promise<string> {
+    if (customUrl && customUrl.trim()) return customUrl.trim().replace(/\/+$/, "");
+    try {
+        const config = await getActiveScraperConfig();
+        if (config?.base_url) return config.base_url.replace(/\/+$/, "");
+    } catch {}
+    return (process.env.BILLINGNESIA_BASE_URL || "https://billing.at-in.net").replace(/\/+$/, "");
+}
 
 export interface CustomerServiceItem {
     name: string;
@@ -320,7 +330,7 @@ export async function loginToBillingnesia(
     password: string,
     customBaseUrl?: string
 ): Promise<{ sessionCookie: string; body: string }> {
-    const baseUrl = (customBaseUrl || process.env.BILLINGNESIA_BASE_URL || "https://billing.at-in.net").replace(/\/+$/, "");
+    const baseUrl = await resolveBillingnesiaBaseUrl(customBaseUrl);
     const trimmedUsername = (username || "").trim();
     const trimmedPassword = (password || "").trim();
 
@@ -877,7 +887,7 @@ export function parseBillingnesiaHTML(
                     last_action: row[actionIdx !== -1 ? actionIdx : 2] || "-",
                     progress: row[progIdx !== -1 ? progIdx : 3] || "100%",
                     status: row[statusIdx !== -1 ? statusIdx : 4] || "SELESAI",
-                    detail_url: `https://billing.at-in.net/admin/tiket/detailtiket/${tId}`,
+                    detail_url: `/admin/tiket/detailtiket/${tId}`,
                 });
             }
         }
@@ -1042,7 +1052,7 @@ export async function searchBillingnesiaCandidates(
     const cleanQuery = query.trim();
     if (!cleanQuery) return [];
 
-    const baseUrl = process.env.BILLINGNESIA_BASE_URL || "https://billing.at-in.net";
+    const baseUrl = await resolveBillingnesiaBaseUrl();
     let cookie = await getActiveSessionCookie(baseUrl, false, userSessionCookie);
 
     const searchUrl = `${baseUrl.replace(/\/+$/, "")}/admin/data/listpelanggan?page=1&per_page=25&search=${encodeURIComponent(cleanQuery)}`;
@@ -1262,7 +1272,7 @@ export async function scrapeBillingnesiaData(
         return { success: false, error: "Query pencarian tidak boleh kosong." };
     }
 
-    const baseUrl = process.env.BILLINGNESIA_BASE_URL || "https://billing.at-in.net";
+    const baseUrl = await resolveBillingnesiaBaseUrl();
     const isTicket = /TKT/i.test(cleanQuery);
     const isDirectCustomerId = /^\d{10,13}$/.test(cleanQuery) || Boolean(specificCustomerId);
 
@@ -1430,7 +1440,7 @@ export async function scrapeTicketDetail(
         throw new Error("Nomor tiket tidak valid.");
     }
 
-    const baseUrl = process.env.BILLINGNESIA_BASE_URL || "https://billing.at-in.net";
+    const baseUrl = await resolveBillingnesiaBaseUrl();
     const detailUrl = `${baseUrl.replace(/\/+$/, "")}/admin/tiket/detailtiket/${encodeURIComponent(cleanTicketId)}`;
 
     let cookie = await getActiveSessionCookie(baseUrl, false, userSessionCookie);
@@ -1636,7 +1646,7 @@ export async function scrapeWorkTicketsTable(options: {
     perPage: number;
     date: string;
 }> {
-    const baseUrl = process.env.BILLINGNESIA_BASE_URL || "https://billing.at-in.net";
+    const baseUrl = await resolveBillingnesiaBaseUrl();
     const targetDate = options.date || new Date().toISOString().slice(0, 10);
     const targetJenis = options.jenis || "TEKNIS";
     const targetPage = options.page || 1;

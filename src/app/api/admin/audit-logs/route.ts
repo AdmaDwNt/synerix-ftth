@@ -50,7 +50,8 @@ export async function GET(req: NextRequest) {
         const { searchParams } = new URL(req.url);
         const usernameFilter = searchParams.get("username")?.trim();
         const actionFilter = searchParams.get("action")?.trim();
-        const limit = Math.min(Number(searchParams.get("limit")) || 50, 100);
+        const categoryFilter = searchParams.get("category")?.trim();
+        const limit = Math.min(Number(searchParams.get("limit")) || 50, 200);
 
         const supabase = getSupabaseServerClient();
 
@@ -68,23 +69,32 @@ export async function GET(req: NextRequest) {
             query = query.eq("action_type", actionFilter);
         }
 
-        const { data: logs, error } = await query;
+        if (categoryFilter && categoryFilter !== "ALL") {
+            query = query.eq("category", categoryFilter);
+        }
+
+        const [{ data: logs, error }, { data: uniqueUsers }, { data: blockedIps }] = await Promise.all([
+            query,
+            supabase
+                .from("synerix_users")
+                .select("username, full_name, role")
+                .order("username", { ascending: true }),
+            supabase
+                .from("blocked_ips")
+                .select("*")
+                .order("created_at", { ascending: false }),
+        ]);
 
         if (error) {
             console.error("Gagal mengambil audit logs:", error);
             return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         }
 
-        // Ambil juga daftar unik username untuk dropdown filter
-        const { data: uniqueUsers } = await supabase
-            .from("synerix_users")
-            .select("username, full_name, role")
-            .order("username", { ascending: true });
-
         return NextResponse.json({
             success: true,
             logs: logs || [],
             users: uniqueUsers || [],
+            blockedIps: blockedIps || [],
         });
     } catch (err) {
         return NextResponse.json(
